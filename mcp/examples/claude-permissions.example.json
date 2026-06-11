@@ -1,0 +1,30 @@
+// ─────────────────────────────────────────────────────────────
+// Claude Code — KGraph tool auto-allow permissions (OPTIONAL)
+// ─────────────────────────────────────────────────────────────
+//
+// WHERE TO PUT THIS:
+//   Global: ~/.claude/settings.json
+//   Local:  ./.claude/settings.json
+//
+// Merge the "permissions.allow" entries into your existing settings
+// so Claude doesn't prompt for approval on every KGraph tool call.
+// This is OPTIONAL — without it, Claude just asks once per tool.
+// ─────────────────────────────────────────────────────────────
+{
+  "permissions": {
+    "allow": [
+      "mcp__kgraph__search_symbols",
+      "mcp__kgraph__get_symbol",
+      "mcp__kgraph__get_function_body",
+      "mcp__kgraph__find_callers",
+      "mcp__kgraph__find_callees",
+      "mcp__kgraph__call_path",
+      "mcp__kgraph__find_references",
+      "mcp__kgraph__find_type_definition",
+      "mcp__kgraph__get_struct_layout",
+      "mcp__kgraph__find_ops_impls",
+      "mcp__kgraph__get_neighborhood",
+      "mcp__kgraph__index_status"
+    ]
+  }
+}

@@ -1,0 +1,43 @@
+// ─────────────────────────────────────────────────────────────
+// opencode — KGraph MCP server config
+// ─────────────────────────────────────────────────────────────
+//
+// WHERE TO PUT THIS:
+//   Global: ~/.config/opencode/opencode.json   (or opencode.jsonc)
+//           (Windows: %APPDATA%/opencode/opencode.json)
+//   Local:  ./opencode.json                    (in the kernel source root)
+//
+// Merge the "mcp.kgraph" block into your existing config.
+//
+// NOTE the shape differs from Claude/Cursor:
+//   - uses "mcp.<name>" (not "mcpServers")
+//   - "command" is a STRING ARRAY combining binary + args
+//   - "environment" (not "env")
+//   - explicit "enabled": true flag
+//
+// ADJUST THESE PATHS to your machine:
+//   command[0]              → your KGraph venv python
+//   command[1]              → path to KGraph/mcp/server.py
+//   environment.KGRAPH_ROOT → the kernel source tree you indexed
+//   environment.KGRAPH_DB   → that tree's .kgraph/kgraph.db
+//
+// If you installed kgraph on PATH (via install.sh):
+//   "command": ["kgraph", "serve", "--mcp"]
+// ─────────────────────────────────────────────────────────────
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "kgraph": {
+      "type": "local",
+      "command": [
+        "/path/to/KGraph/.venv/bin/python",
+        "/path/to/KGraph/mcp/server.py"
+      ],
+      "environment": {
+        "KGRAPH_ROOT": "/path/to/linux",
+        "KGRAPH_DB": "/path/to/linux/.kgraph/kgraph.db"
+      },
+      "enabled": true
+    }
+  }
+}

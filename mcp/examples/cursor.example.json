@@ -1,0 +1,36 @@
+// ─────────────────────────────────────────────────────────────
+// Cursor — KGraph MCP server config
+// ─────────────────────────────────────────────────────────────
+//
+// WHERE TO PUT THIS:
+//   Global (all workspaces): ~/.cursor/mcp.json
+//   Local  (one workspace):  ./.cursor/mcp.json
+//
+// Merge the "mcpServers.kgraph" block into your existing file.
+// Restart Cursor after editing for the MCP server to load.
+//
+// ADJUST THESE PATHS to your machine (same as Claude):
+//   command       → your KGraph venv python
+//   args[0]       → path to KGraph/mcp/server.py
+//   KGRAPH_ROOT   → the kernel source tree you indexed
+//   KGRAPH_DB     → that tree's .kgraph/kgraph.db
+//
+// NOTE: Cursor launches MCP servers with a working directory that
+// isn't the workspace root. KGRAPH_ROOT is set explicitly here so
+// the server always finds the right .kgraph/kgraph.db.
+//
+// Cursor has no permission/auto-allow concept — tools are available
+// once the server connects.
+// ─────────────────────────────────────────────────────────────
+{
+  "mcpServers": {
+    "kgraph": {
+      "command": "/path/to/KGraph/.venv/bin/python",
+      "args": ["/path/to/KGraph/mcp/server.py"],
+      "env": {
+        "KGRAPH_ROOT": "/path/to/linux",
+        "KGRAPH_DB": "/path/to/linux/.kgraph/kgraph.db"
+      }
+    }
+  }
+}

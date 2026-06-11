@@ -36,249 +36,222 @@ _KGraph 索引的是**编译器**看到的真相——不是解析器猜的语�
 
 ---
 
-## 快速开始
+## 工作流概览
 
-### 第一步：准备内核构建环境（推荐 Docker）
-
-KGraph 是编译器感知的——它索引的是编译器真正看到的代码。你需要一个能产出
-`compile_commands.json`（使用 **clang**）的内核构建环境。
-
-推荐用 Docker，干净、可复现、不污染宿主机：
+只要你的内核有了 `compile_commands.json`，整个配置就是三条命令：
 
 ```bash
-# 使用提供的 Dockerfile（或自己的内核构建镜像）
-docker build -t kgraph-linux-build -f Dockerfile .
+# 1. 安装 kgraph CLI
+curl -fsSL https://raw.githubusercontent.com/ajksunkang/KGraph/main/install.sh | bash
 
-# 或拉取预构建镜像（如有）
-# docker pull ajksunkang/kgraph-linux-build:latest
+# 2. 把 kgraph 的 MCP 服务接入你的 AI agent（自动检测已安装的 agent）
+kgraph install
 
-# 运行构建容器，挂载内核源码
-docker run -it -v /path/to/linux:/kernel kgraph-linux-build bash
-```
-
-<details>
-<summary><strong>Dockerfile 示例（Linux x86_64 defconfig）</strong></summary>
-
-```dockerfile
-FROM ubuntu:22.04
-
-RUN apt-get update && apt-get install -y \
-    clang llvm gcc make bc flex bison libelf-dev \
-    libssl-dev libncurses-dev python3 python3-pip \
-    git curl protobuf-compiler && \
-    rm -rf /var/lib/apt/lists/*
-
-# 安装 scip-clang
-RUN curl -fsSL https://github.com/sourcegraph/scip-clang/releases/latest/download/scip-clang-linux-x64.tar.gz \
-    | tar xz -C /usr/local/bin/
-
-WORKDIR /kernel
-```
-
-</details>
-
-**在容器内**（或有 `clang` + `make` 的任何环境）：
-
-```bash
-cd /kernel
-
-# 生成 x86_64 defconfig
-make CC=clang LLVM=1 x86_64_defconfig
-
-# 编译内核（产出 compile_commands.json）
-make CC=clang LLVM=1 -j$(nproc)
-
-# 或不完整编译、只生成 compile_commands.json：
-make CC=clang LLVM=1 prepare
-scripts/clang-tools/gen_compile_commands.py
-```
-
-<details>
-<summary><strong>不使用 Docker —— 本地构建</strong></summary>
-
-如果你更愿意本地构建，确保已安装：
-
-- **clang**（≥ 14）和 **LLVM** 工具
-- **内核构建依赖**：`bc flex bison libelf-dev libssl-dev`
-- **scip-clang**：从 [github.com/sourcegraph/scip-clang](https://github.com/sourcegraph/scip-clang) 下载
-
-```bash
-# macOS (Homebrew)
-brew install clang llvm protobuf
-
-# Ubuntu/Debian
-sudo apt install clang llvm protobuf-compiler \
-    bc flex bison libelf-dev libssl-dev
-
-# 然后按上面的步骤构建
+# 3. 为这个内核构建代码图谱（在内核源码目录内运行）
 cd /path/to/linux
+kgraph init .
+```
+
+就这样。重启 agent，问它内核代码的结构性问题——它会调用 KGraph 的 MCP 工具，而不是 grep。
+
+```
+> 哪些函数调用了 ext4_file_read_iter？
+> 内核里有哪些 ->read_iter 的实现？
+> 给我看 generic_file_read_iter 的函数体。
+```
+
+```
+  curl install.sh          kgraph install            kgraph init .
+ ┌──────────────┐        ┌──────────────────┐      ┌────────────────────┐
+ │ kgraph CLI   │   →    │   配置 agent      │  →   │ scip-clang → SQLite │
+ │ 装到 PATH    │        │ (claude/cursor/  │      │ .kgraph/kgraph.db   │
+ │              │        │  codex/opencode/ │      │ 可供查询            │
+ │              │        │  hermes)         │      │                     │
+ └──────────────┘        └──────────────────┘      └────────────────────┘
+```
+
+> **前提**：一个用 **clang** 构建出 `compile_commands.json` 的内核树
+> （`make CC=clang LLVM=1`）。如何产出见下方 [详细配置](#详细配置)，含 Docker。
+
+---
+
+## 详细配置
+
+### 第 0 步（前提）：用 clang 构建 `compile_commands.json`
+
+KGraph 是编译器感知的——它索引编译器真正看到的代码，所以需要 clang 编译数据库。
+Docker 提供干净、可复现的构建环境：
+
+```bash
+docker run --platform linux/amd64 -it --rm \
+  -v "$(pwd):/workspace" -w /workspace ubuntu:latest
+
+# 容器内：
+apt-get update && apt-get install -y clang llvm make bc flex bison libelf-dev libssl-dev
 make CC=clang LLVM=1 x86_64_defconfig
 make CC=clang LLVM=1 -j$(nproc)
+./scripts/clang-tools/gen_compile_commands.py
+```
+
+产出 `compile_commands.json`（约 5–50 MB），列出你的 `defconfig` 实际编译的 `.c` 文件
+及其精确编译器标志。**这种配置感知正是 KGraph 与语法级工具的本质区别。**
+
+<details>
+<summary><strong>用 scip-clang 生成 index.scip</strong></summary>
+
+`kgraph init` 会自动做这一步，你也可以直接运行。`scip-clang` 是 Linux x86-64 二进制——
+在同一个 Docker/Linux 环境里运行：
+
+```bash
+# 容器内，scip-clang 可用时：
+./scip-tools/scip-clang --compdb-path ./compile_commands.json
+# → 产出 index.scip（全量 defconfig 约数百 MB）
 ```
 
 </details>
 
-### 第二步：构建 `compile_commands.json`
-
-这一步产出编译数据库——列出在你的 config 下实际编译的 `.c` 文件及其精确编译器标志。
-
-```bash
-# 在构建环境内（Docker 或本地）：
-cd /kernel
-
-# 完整编译 + compile_commands.json
-make CC=clang LLVM=1 -j$(nproc)
-scripts/clang-tools/gen_compile_commands.py
-
-# 确认文件存在
-ls -lh compile_commands.json
-# 约 5-50MB，视 config 覆盖范围而定
-```
-
-**关键**：`compile_commands.json` 是配置感知的——只列出你的 `defconfig` 实际编译的文件。
-这正是 KGraph 与语法级工具的本质区别。
-
-### 第三步：安装 KGraph
+### 第 1 步：安装 kgraph CLI
 
 ```bash
 # macOS / Linux
 curl -fsSL https://raw.githubusercontent.com/ajksunkang/KGraph/main/install.sh | bash
 ```
 
-下载 `kgraph` 到 `~/.local/bin` 并注册到 `PATH`。
-打开**新终端**让命令生效。
+下载 `kgraph` 到 `~/.local/bin` 并注册到 `PATH`。打开**新终端**让命令生效。
 
 <sub>已经克隆了仓库？也可以从项目根目录直接运行 `./install.sh`。</sub>
 
-### 第四步：在内核源码中初始化 KGraph
-
-```bash
-# 在构建环境的内核源码目录内：
-cd /kernel
-kgraph init .
-```
-
-`kgraph init` 自动执行以下步骤：
-
-1. **创建 venv** — 在 KGraph 项目内创建 Python 3.10+ 虚拟环境 `.venv/`
-2. **安装 protobuf** — 安装 `protobuf>=7.35.0`（upb 格式）到 venv，
-   版本与生成 `scip_pb2.py` 的 protoc 版本匹配
-3. **索引** — 运行 `scip-clang --compilation-database compile_commands.json` → `index.scip`
-4. **灌库** — 解析 SCIP protobuf，派生调用图 + ops 绑定，写入 `.kgraph/kgraph.db`
-5. **富化** — 映射 MAINTAINERS → 子系统标签
-
-<details>
-<summary><strong>手动 venv 设置（如果 kgraph init 失败）</strong></summary>
-
-如果自动 venv 设置失败（如系统没有 python3.10+），手动设置：
-
-```bash
-# 找到系统上的 python3.10+
-# macOS (Homebrew): /opt/homebrew/bin/python3.10
-# Linux: /usr/bin/python3.10 或 python3.12
-
-PYTHON3=/opt/homebrew/bin/python3.10   # 根据系统调整
-
-# 在 KGraph 项目中创建 venv
-$PYTHON3 -m venv /path/to/KGraph/.venv
-
-# 激活并安装 protobuf
-source /path/to/KGraph/.venv/bin/activate
-pip install "protobuf>=7.35.0,<8"
-
-# 验证
-python -c "import google.protobuf; print(google.protobuf.__version__)"
-# 应输出: 7.35.0
-```
-
-</details>
-
-<details>
-<summary><strong>索引范围选项</strong></summary>
-
-```bash
-# 跳过构建步骤（已有 compile_commands.json）：
-kgraph init . --skip-build
-
-# 只索引一个子系统（MVP / 测试更快）：
-kgraph init . --subsystem fs/ext4
-
-# 强制全量重建：
-kgraph init . --force
-
-# 多子系统
-kgraph init . --subsystem fs/ext4,net/ipv4,mm
-```
-
-</details>
-
-### 第五步：安装 MCP 工具到你的 Code Agent
+### 第 2 步：配置你的 AI agent
 
 ```bash
 kgraph install
 ```
 
-自动检测并配置 MCP 服务端集成到已安装的 agent：
+`kgraph install` 会执行一次 `detect()`——读取各 agent 的配置文件/目录，
+识别当前系统装了哪些 AI agent，并**自动配置检测到的那些**。支持的 agent 及配置位置：
 
-- **Claude Code** — 写入 MCP 服务端配置 + 自动授权权限
-- **Cursor** — 写入 `.cursor/mcp.json`
-- **Codex CLI** — 写入 MCP 配置
-- **其他 MCP 兼容 agent** — 打印配置片段供手动接入
-
-<details>
-<summary><strong>非交互模式（脚本 / CI）</strong></summary>
+| Agent | 配置文件 | 格式 |
+|---|---|---|
+| **Claude Code** | `~/.claude.json` + `~/.claude/settings.json` | JSON `mcpServers` + 权限 |
+| **Cursor** | `~/.cursor/mcp.json` | JSON `mcpServers` |
+| **Codex CLI** | `~/.codex/config.toml` | TOML `[mcp_servers.kgraph]` |
+| **opencode** | `~/.config/opencode/opencode.json` | JSONC `mcp.kgraph` |
+| **Hermes Agent** | `~/.hermes/config.yaml` | YAML `mcp_servers` + toolsets |
 
 ```bash
-kgraph install --yes                          # 自动检测 agent，接受默认
-kgraph install --target=claude,cursor --yes    # 指定 agent 列表
-kgraph install --print-config claude           # 只打印配置片段，不写文件
+kgraph detect                          # 只显示检测结果，不写文件
+kgraph install                         # 自动检测并配置已安装的 agent
+kgraph install --target claude,cursor  # 配置指定 agent
+kgraph install --location local        # 项目级配置（./.mcp.json 等）
+kgraph uninstall                       # 从所有 agent 移除 kgraph 配置
 ```
 
-| 参数 | 取值 | 默认 |
-|---|---|---|
-| `--target` | `auto`, `all`, `none`, 或逗号分隔 (`claude,cursor,...`) | 提示 |
-| `--yes` | (布尔) 接受默认 | 每步提示 |
-| `--print-config <id>` | 打印指定 agent 的配置片段 | — |
+<sub>想手动配置？见 [`mcp/examples/`](mcp/examples/)——每个 agent 的可直接修改的配置示例。</sub>
+
+### 第 3 步：构建代码图谱
+
+```bash
+cd /path/to/linux        # 内核源码目录（compile_commands.json 所在处）
+kgraph init .
+```
+
+`kgraph init` 自动执行：
+
+1. **venv** — 创建 Python 3.10+ 虚拟环境并装 `protobuf>=7.35`（upb）
+2. **索引** — 运行 `scip-clang --compdb-path compile_commands.json` → `index.scip`
+   （若 `index.scip` 已存在则跳过）
+3. **灌库** — 解析 SCIP protobuf，派生调用图 + `ops_bind` 边，全部写入 `./.kgraph/kgraph.db`
+4. **富化** — 映射 MAINTAINERS → 子系统标签
+
+所有产物都留在内核树内（`index.scip`、`.kgraph/kgraph.db`）——图谱是 per-project 的，
+每个你索引的内核都有自己独立的数据库。
+
+```bash
+kgraph init . --skip-build                # index.scip 已存在，只灌库
+kgraph init . --subsystem fs/ext4         # 限定子系统（更快）
+kgraph init . --force                     # 从头重建
+```
+
+<details>
+<summary><strong>手动 venv 设置（kgraph init 找不到 python3.10+ 时）</strong></summary>
+
+```bash
+# 找到系统上的 python3.10+，然后：
+python3.10 -m venv /path/to/KGraph/.venv
+source /path/to/KGraph/.venv/bin/activate
+pip install "protobuf>=7.35.0,<8"
+python -c "import google.protobuf; print(google.protobuf.__version__)"   # → 7.35.0
+```
 
 </details>
 
-### 第六步：使用 Agent + KGraph
+### 第 4 步：使用 agent
 
-重启 agent 让 MCP 服务端加载。然后提问：
+重启 agent 让 MCP 服务加载。它现在有了 KGraph 的工具——问结构性问题，
+它会查图谱而不是 grep：
 
 ```
-> 哪些函数调用了 ext4_file_read_iter？
-> 一个 read 请求从 VFS 到 ext4 是怎么流的？
-> mm/page_alloc.c 属于哪个子系统？
-> 找出 file_operations.read_iter 的所有实现
+> 哪些函数调用了 ext4_file_read_iter？           → find_callers
+> generic_file_read_iter 调用了什么？             → find_callees
+> 给我看 ext4_file_read_iter 的函数体。           → get_function_body
+> 内核里有哪些 ->read_iter 的实现？               → find_ops_impls
+> vfs_read 在哪些地方被引用？                     → find_references
 ```
-
-项目根目录存在 `.kgraph/` 时，你的 agent 会自动调用 KGraph MCP 工具。
 
 ---
 
 ## MCP 工具集
 
+KGraph 暴露 **12 个工具**——覆盖大部分 agent 代码索引诉求的最小可行集。
+每个工具都是配置感知、编译器解析的。
+
+### 符号查找
+
 | 工具 | 用途 | 关键参数 |
 |---|---|---|
-| `search_symbols(q)` | 按名称/正则/全文检索符号 | `kind, limit` |
-| `get_definition(sym)` | 定义位置 + 签名（不返回整文件） | — |
-| `find_callers(sym)` | 谁调用了这个函数（反向调用图） | `depth, limit` |
-| `find_callees(sym)` | 这个函数调用了谁（正向调用图） | `depth, limit` |
-| `get_neighborhood(sym)` | N-hop 子图——最省 token 的上下文打包 | `depth, edge_types, summary` |
-| `call_path(a, b)` | 两函数间的调用路径 | `max_len` |
-| `get_struct_layout(type)` | 结构体字段和布局 | — |
-| `find_ops_impls(field)` | 函数指针字段→所有候选实现 **★** | `struct_type` |
-| `which_subsystem(sym)` | MAINTAINERS 子系统归属 | — |
-| `expand_macro(name)` | 宏定义体 | — |
+| `search_symbols(query)` | 按名称模糊全文搜索（FTS5） | `kind, limit` |
+| `get_symbol(name)` | 精确名查找 → 定义 + 签名 | `kind, limit` |
+| `get_function_body(name)` | 从磁盘读真实函数体源码（带行号） | `kind, context` |
 
-**★ `find_ops_impls` 是杀手锏**——解析内核函数指针表（VFS ops、驱动 ops、net proto ops）
-的间接调用，语法级工具跟不了。
+### 调用图与引用
+
+| 工具 | 用途 | 关键参数 |
+|---|---|---|
+| `find_callers(name)` | 谁调用了这个函数——**含 `ops_bind`** | `depth, limit` |
+| `find_callees(name)` | 这个函数调用了谁——**含 `ops_bind`** | `depth, limit` |
+| `call_path(source, target)` | 两函数间的调用路径 | `max_len` |
+| `find_references(name)` | 符号的每个使用点，带所在函数 | `limit` |
+
+### 类型与结构
+
+| 工具 | 用途 | 关键参数 |
+|---|---|---|
+| `find_type_definition(name)` | go-to-type-definition（`type_of` 边） | — |
+| `get_struct_layout(name)` | 结构体字段（`contains` 边） | — |
+| `get_neighborhood(name)` | N-hop 子图——最省 token 的上下文打包 | `depth, edge_types, summary` |
+
+### 内核专属与元信息
+
+| 工具 | 用途 | 关键参数 |
+|---|---|---|
+| `find_ops_impls(field_name)` | **★** 函数指针字段 → 所有实现 | `struct_type` |
+| `index_status()` | 索引元数据 + 统计 | — |
+
+**★ `find_ops_impls` 是杀手锏。** 它解析内核函数指针表（VFS ops、驱动 ops、net proto ops）
+的间接调用——grep 和语法级工具跟不了。一次 `find_ops_impls("read_iter")` 返回内核里
+所有文件系统/驱动的 `read_iter` 实现：
+
+```
+ext4_file_operations    → ext4_file_read_iter   @ fs/ext4/file.c
+shmem_file_operations   → shmem_file_read_iter  @ mm/shmem.c
+socket_file_ops         → sock_read_iter        @ net/socket.c
+... (16 个)
+```
 
 ### Token 预算控制
 
-每个工具接受 `summary=true` 只返回名字+文件:行（不含签名、文档、源码）。
-配合 `depth` 和 `limit`，agent 可以控制预算而不被子图爆炸淹没。
+`find_callers`/`find_callees` 接受 `depth` 和 `limit`；`get_neighborhood` 默认返回
+紧凑的 `name + file:line`（`summary=true`）。agent 可以控制预算而不被子图爆炸淹没。
 
 ---
 
@@ -287,47 +260,49 @@ kgraph install --print-config claude           # 只打印配置片段，不写�
 ```
 ┌───────────────────────────────────────────────────────────────┐
 │                        你的 Code Agent                         │
-│                                                               │
-│  "一个 read 请求怎么到达 ext4_file_read_iter？"                │
-│         直接调用 KGraph 工具                                   │
-│                         │                                     │
-└─────────────────────────┼─────────────────────────────────────┘
-                          │
-                          ▼
+│  "哪些实现了 ->read_iter？" → 直接调用 KGraph 工具              │
+└─────────────────────────────────┬─────────────────────────────┘
+                                  │
+                                  ▼
 ┌───────────────────────────────────────────────────────────────┐
-│                     KGraph MCP 服务端                          │
-│                                                               │
-│   search / callers / callees / neighborhood / ops_impls / ..  │
-│                         │                                     │
-│                         ▼                                     │
+│                  KGraph MCP 服务端（12 个工具）                 │
+│  search · get_symbol · get_function_body · callers · callees   │
+│  call_path · references · type_definition · struct_layout      │
+│  neighborhood · ops_impls · index_status                       │
+│                                  │                             │
+│                                  ▼                             │
 │              SQLite 知识图谱 (.kgraph/kgraph.db)              │
-│   symbols · occurrences · edges · ops_bind · subsystem        │
+│   symbols · occurrences · edges · ops_bind · subsystem         │
 └───────────────────────────────────────────────────────────────┘
 ```
 
 1. **构建** — `make CC=clang LLVM=1` 产出 `compile_commands.json`（编译器真正编译的内容）
 2. **索引** — `scip-clang` 产出 `index.scip`，含完整语义符号信息
-3. **灌库** — Python（protobuf 7.x / upb）解析 SCIP，从 `enclosing_range` 派生调用边，
-   从函数指针表初始化派生 `ops_bind` 边，写入 SQLite
-4. **富化** — `KernelProfile` 映射 MAINTAINERS→子系统标签、标注 config 门控符号
+3. **灌库** — Python（protobuf 7.x / upb）把 SCIP 解析成 `IngestBatch`，从 `enclosing_range`
+   派生调用边，从函数指针表初始化派生 `ops_bind` 边，经 `GraphStore` 接口写入 SQLite
+4. **富化** — `KernelProfile` 映射 MAINTAINERS → 子系统标签、标注 config 门控符号
 5. **服务** — MCP 服务端通过 SQLite 递归 CTE 暴露图查询
+
+`IngestBatch` → `GraphStore` 边界让 parser 与存储完全解耦——换存储后端（Neo4j、自研嵌入式库）
+只需实现一个新 `GraphStore`，parser、MCP 工具、agent 接入都不动。
 
 ---
 
 ## CLI 参考
 
 ```bash
-kgraph install                     # 注册 MCP 服务端到 code agent
-kgraph init <path>                 # 构建 + 索引 + 灌库（--skip-build, --subsystem, --force）
-kgraph index <path>                # 只重建 SCIP 索引（不重编译）
+# Agent 接入
+kgraph install                     # 自动检测并配置已安装 agent
+kgraph install --target <ids>      # 配置指定 agent（claude,cursor,codex,opencode,hermes）
+kgraph install --location <loc>    # global（默认）或 local（项目级）
+kgraph detect                      # 显示检测到的 agent，不写文件
+kgraph uninstall                   # 从 agent 移除 kgraph 配置
+
+# 索引生命周期（在内核源码目录内运行）
+kgraph init <path>                 # 索引 + 灌库（--skip-build, --subsystem, --force）
 kgraph ingest <path>               # 从已有 index.scip 重新灌库
 kgraph serve --mcp                 # 启动 MCP 服务端（通常由 agent 自动拉起）
-kgraph query <search>              # CLI 符号搜索（--kind, --limit, --json）
-kgraph callers <symbol>            # CLI 反向调用图
-kgraph callees <symbol>            # CLI 正向调用图
 kgraph status <path>               # 查看索引统计与健康
-kgraph uninstall                   # 从所有 agent 移除 MCP 配置
-kgraph uninit <path>               # 从项目移除 .kgraph/
 ```
 
 ---
@@ -370,23 +345,35 @@ kgraph uninit <path>               # 从项目移除 .kgraph/
 
 ```
 KGraph/
+├── README.md / README.zh-CN.md     # 本文件（英文 / 中文）
+├── install.sh                      # 一键 CLI 安装脚本
 ├── docs/
-│   ├── DESIGN.md          # 架构与设计理念（英文）
-│   ├── DESIGN.zh-CN.md    # 架构与设计理念（中文）
-├── README.md              # 英文
-├── README.zh-CN.md        # 中文
+│   ├── DESIGN.md / DESIGN.zh-CN.md  # 架构与设计理念
+│   └── scip-parser-design.md        # SCIP 解析器设计笔记
 ├── thirdparty/
-│   └── scip.proto         # SCIP protobuf 规范（Sourcegraph 官方）
+│   └── scip.proto                  # SCIP protobuf 规范
 ├── scripts/
-│   └── scip_pb2.py        # 生成的 Python protobuf 绑定（protobuf 7.x / upb）
-├── .venv/                 # Python 3.10+ venv，含 protobuf>=7.35
+│   └── scip_pb2.py                 # 生成的 protobuf 绑定（7.x / upb）
 ├── src/
-│   ├── libkgraph/         # C：SCIP 解析、SQLite 批量灌库、图派生
-│   ├── kgraph/            # Python：CLI、KernelProfile、QueryEngine、MCP 服务端
-│   └── mcp/               # Python：MCP 工具定义与服务端
-├── tests/
-└── docs/
-    └── scip-parser-design.md  # SCIP 解析器设计笔记
+│   ├── parser/                     # SCIP protobuf → IngestBatch
+│   │   ├── models.py               #   数据模型（parser↔storage 契约）
+│   │   ├── scip_parser.py          #   解析 + enclosing 匹配 + ops_bind 派生
+│   │   └── symbol_name.py          #   SCIP 符号串解析
+│   ├── storage/                    # 图谱持久化
+│   │   ├── graph_store.py          #   GraphStore 接口（扩展点）
+│   │   └── sqlite_store.py         #   SQLite 后端（WAL · FTS5 · 递归 CTE）
+│   └── installer/                  # agent 自动配置
+│       ├── orchestrator.py         #   detect() / install() / uninstall()
+│       ├── cli.py                  #   `kgraph install` CLI
+│       └── targets/                #   claude · cursor · codex · opencode · hermes
+├── mcp/
+│   ├── server.py                   # MCP 服务端（12 个工具）
+│   ├── source_reader.py            # 从磁盘读函数体
+│   └── examples/                   # 各 agent 手动配置示例
+└── tests/
+    ├── test_parser_store.py        # parser → SQLite 管线
+    ├── test_mcp_server.py          # MCP 工具 smoke test
+    └── ingest_real.py              # 全量内核灌库
 ```
 
 ---
@@ -396,26 +383,20 @@ KGraph/
 如果你在开发 KGraph（不仅是作为用户使用）：
 
 ```bash
-# 克隆仓库
 git clone https://github.com/ajksunkang/KGraph.git
 cd KGraph
 
-# 创建并激活 venv
-/opt/homebrew/bin/python3.10 -m venv .venv   # 或系统上的任何 python3.10+
+# 用任何 python3.10+ 建 venv 并装 protobuf 7.x（upb，匹配 protoc 35）
+python3.10 -m venv .venv
 source .venv/bin/activate
-
-# 安装 protobuf 7.x（upb 格式，匹配 protoc 35）
 pip install "protobuf>=7.35.0,<8"
+python -c "import google.protobuf; print(google.protobuf.__version__)"   # → 7.35.0
 
-# 验证
-python -c "import google.protobuf; print(google.protobuf.__version__)"
-# → 7.35.0
-
-# 重新生成 scip_pb2.py（仅当你修改 thirdparty/scip.proto 时需要）
+# 仅当修改 thirdparty/scip.proto 时才需重新生成 scip_pb2.py
 protoc --proto_path=thirdparty --python_out=scripts thirdparty/scip.proto
 
-# 验证生成的绑定
-python -c "import sys; sys.path.insert(0,'scripts'); import scip_pb2; print('OK')"
+# 运行测试（KGRAPH_ROOT 指向已索引的内核树）
+KGRAPH_ROOT=/path/to/linux .venv/bin/python tests/test_mcp_server.py
 ```
 
 ---
@@ -423,8 +404,8 @@ python -c "import sys; sys.path.insert(0,'scripts'); import scip_pb2; print('OK'
 ## 卸载
 
 ```bash
-kgraph uninstall               # 从所有 agent 移除 MCP 配置
-kgraph uninit /path/to/linux   # 从项目移除 .kgraph/
+kgraph uninstall               # 从所有 agent 移除 kgraph MCP 配置
+rm -rf /path/to/linux/.kgraph  # 从项目移除图谱数据库
 ```
 
 ---

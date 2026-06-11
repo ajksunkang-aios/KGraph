@@ -1,0 +1,36 @@
+// ─────────────────────────────────────────────────────────────
+// Claude Code — KGraph MCP server config
+// ─────────────────────────────────────────────────────────────
+//
+// WHERE TO PUT THIS:
+//   Global (all projects): ~/.claude.json
+//   Local  (one project):  ./.mcp.json   (in the kernel source root)
+//
+// Merge the "mcpServers.kgraph" block into your existing file
+// (don't overwrite other MCP servers you already have).
+//
+// ADJUST THESE PATHS to your machine:
+//   command       → your KGraph venv python
+//   args[0]       → path to KGraph/mcp/server.py
+//   KGRAPH_ROOT   → the kernel source tree you indexed (where .kgraph/ lives)
+//   KGRAPH_DB     → that tree's .kgraph/kgraph.db
+//
+// If you installed kgraph on PATH (via install.sh), you can instead use:
+//   "command": "kgraph", "args": ["serve", "--mcp"]
+//
+// PERMISSIONS (optional, auto-allow the tools) go in a SEPARATE file:
+//   ~/.claude/settings.json  (global)  or  ./.claude/settings.json (local)
+//   → see claude-permissions.example.json
+// ─────────────────────────────────────────────────────────────
+{
+  "mcpServers": {
+    "kgraph": {
+      "command": "/path/to/KGraph/.venv/bin/python",
+      "args": ["/path/to/KGraph/mcp/server.py"],
+      "env": {
+        "KGRAPH_ROOT": "/path/to/linux",
+        "KGRAPH_DB": "/path/to/linux/.kgraph/kgraph.db"
+      }
+    }
+  }
+}

@@ -1,0 +1,42 @@
+# ─────────────────────────────────────────────────────────────
+# Hermes Agent — KGraph MCP server config
+# ─────────────────────────────────────────────────────────────
+#
+# WHERE TO PUT THIS:
+#   $HERMES_HOME/config.yaml   (default: ~/.hermes/config.yaml)
+#
+# Merge BOTH blocks below into your existing config.yaml:
+#   1. mcp_servers.kgraph        — registers the MCP server
+#   2. platform_toolsets.cli     — exposes its tools in CLI sessions
+#      (- mcp-kgraph). Without this, the server can connect but its
+#      tools may be filtered out of normal CLI sessions.
+#
+# ADJUST THESE PATHS to your machine:
+#   command         → your KGraph venv python
+#   args            → [ path to KGraph/mcp/server.py ]
+#   env.KGRAPH_ROOT → the kernel source tree you indexed
+#   env.KGRAPH_DB   → that tree's .kgraph/kgraph.db
+#
+# If you installed kgraph on PATH (via install.sh):
+#   command: kgraph
+#   args:
+#     - serve
+#     - --mcp
+#
+# Start a new Hermes session after editing for changes to take effect.
+# ─────────────────────────────────────────────────────────────
+
+mcp_servers:
+  kgraph:
+    command: /path/to/KGraph/.venv/bin/python
+    args:
+      - /path/to/KGraph/mcp/server.py
+    env:
+      KGRAPH_ROOT: /path/to/linux
+      KGRAPH_DB: /path/to/linux/.kgraph/kgraph.db
+    enabled: true
+
+platform_toolsets:
+  cli:
+    - hermes-cli
+    - mcp-kgraph

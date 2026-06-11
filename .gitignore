@@ -1,2 +1,15 @@
+# Python
 *.pyc
 __pycache__/
+*.egg-info/
+
+# Virtual environment
+.venv/
+
+# Local agent config (machine-specific, may contain local paths)
+.claude/settings.local.json
+
+# Kernel source symlink / index artifacts (per-project, not part of the tool)
+/linux
+*.scip
+.kgraph/

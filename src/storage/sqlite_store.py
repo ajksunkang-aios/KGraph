@@ -584,6 +584,155 @@ class SQLiteStore(GraphStore):
 
         return [dict(r) for r in rows]
 
+    def get_symbol(self, name: str, kind: Optional[str] = None,
+                   limit: int = 10) -> list[dict]:
+        """
+        Exact-name symbol lookup (not fuzzy FTS).
+
+        Agents usually know the exact symbol name (from a crash stack,
+        a grep hit, etc.) and want its definition. This is faster and
+        more precise than search_symbols (which uses FTS ranking).
+
+        Returns list of dicts with: scip_symbol, name, kind, signature,
+        documentation, def_file_path, def_start_line, def_end_line.
+        """
+        if kind:
+            sql = """
+                SELECT s.scip_symbol, s.name, s.kind, s.signature, s.documentation,
+                       f.path as def_file_path, s.def_start_line, s.def_end_line,
+                       s.is_external
+                FROM symbols s
+                LEFT JOIN files f ON s.def_file_id = f.id
+                WHERE s.name = ? AND s.kind = ?
+                ORDER BY s.is_external ASC, s.def_start_line ASC
+                LIMIT ?
+            """
+            rows = self.conn.execute(sql, (name, kind, limit)).fetchall()
+        else:
+            sql = """
+                SELECT s.scip_symbol, s.name, s.kind, s.signature, s.documentation,
+                       f.path as def_file_path, s.def_start_line, s.def_end_line,
+                       s.is_external
+                FROM symbols s
+                LEFT JOIN files f ON s.def_file_id = f.id
+                WHERE s.name = ?
+                ORDER BY s.is_external ASC, s.def_start_line ASC
+                LIMIT ?
+            """
+            rows = self.conn.execute(sql, (name, limit)).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_definition_location(self, scip_symbol: str) -> Optional[dict]:
+        """
+        Get a symbol's definition location (file path + line range).
+
+        Used by the MCP server to read the actual source body from disk.
+        Returns dict with: scip_symbol, name, kind, def_file_path,
+        def_start_line, def_end_line — or None if not found / external.
+        """
+        row = self.conn.execute(
+            """
+            SELECT s.scip_symbol, s.name, s.kind, s.signature,
+                   f.path as def_file_path, s.def_start_line, s.def_end_line
+            FROM symbols s
+            LEFT JOIN files f ON s.def_file_id = f.id
+            WHERE s.scip_symbol = ?
+            """,
+            (scip_symbol,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def find_type_definition(self, scip_symbol: str) -> list[dict]:
+        """
+        Find the type definition(s) of a symbol (Go-to-type-definition).
+
+        Follows `type_of` edges: variable/parameter → its type symbol.
+        Also returns the type's own definition location.
+
+        Returns list of dicts with: type_symbol, type_name, type_kind,
+        def_file_path, def_start_line, signature.
+        """
+        sym_id = self._get_symbol_id(scip_symbol)
+        if sym_id is None:
+            return []
+
+        sql = """
+            SELECT dst_s.scip_symbol as type_symbol, dst_s.name as type_name,
+                   dst_s.kind as type_kind, dst_s.signature,
+                   f.path as def_file_path, dst_s.def_start_line, dst_s.def_end_line
+            FROM edges e
+            JOIN symbols dst_s ON e.dst_id = dst_s.id
+            LEFT JOIN files f ON dst_s.def_file_id = f.id
+            WHERE e.src_id = ? AND e.type = 'type_of'
+        """
+        rows = self.conn.execute(sql, (sym_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def find_references(self, scip_symbol: str, limit: int = 200) -> list[dict]:
+        """
+        Find all references to a symbol (every occurrence, definition + uses).
+
+        Returns each occurrence with its location and role, plus the
+        enclosing function/struct it sits in — so an agent can see
+        "who uses this variable/function and where".
+
+        Returns list of dicts with: file_path, start_line, start_col,
+        role, is_definition, enclosing_name, enclosing_kind.
+        """
+        sym_id = self._get_symbol_id(scip_symbol)
+        if sym_id is None:
+            return []
+
+        sql = """
+            SELECT f.path as file_path, o.start_line, o.start_col,
+                   o.end_line, o.end_col, o.role,
+                   enc.name as enclosing_name, enc.kind as enclosing_kind,
+                   enc.scip_symbol as enclosing_symbol
+            FROM occurrences o
+            JOIN files f ON o.file_id = f.id
+            LEFT JOIN symbols enc ON o.enclosing_symbol_id = enc.id
+            WHERE o.symbol_id = ?
+            ORDER BY f.path, o.start_line
+            LIMIT ?
+        """
+        rows = self.conn.execute(sql, (sym_id, limit)).fetchall()
+        results = []
+        for r in rows:
+            d = dict(r)
+            d["is_definition"] = bool(d["role"] & 0x1)  # SymbolRole.DEFINITION
+            results.append(d)
+        return results
+
+    def get_struct_layout(self, scip_symbol: str) -> dict:
+        """
+        Get a struct's fields via `contains` edges.
+
+        Returns dict with: struct_symbol, struct_name, fields (list of
+        field dicts with name, kind, signature, line).
+        """
+        sym_id = self._get_symbol_id(scip_symbol)
+        if sym_id is None:
+            return {"struct_symbol": scip_symbol, "fields": []}
+
+        struct_row = self.conn.execute(
+            "SELECT scip_symbol, name, kind FROM symbols WHERE id = ?", (sym_id,)
+        ).fetchone()
+
+        sql = """
+            SELECT dst_s.scip_symbol, dst_s.name, dst_s.kind, dst_s.signature,
+                   dst_s.def_start_line
+            FROM edges e
+            JOIN symbols dst_s ON e.dst_id = dst_s.id
+            WHERE e.src_id = ? AND e.type = 'contains'
+            ORDER BY dst_s.def_start_line
+        """
+        field_rows = self.conn.execute(sql, (sym_id,)).fetchall()
+        return {
+            "struct_symbol": struct_row["scip_symbol"] if struct_row else scip_symbol,
+            "struct_name": struct_row["name"] if struct_row else "",
+            "fields": [dict(r) for r in field_rows],
+        }
+
     def get_metadata(self) -> dict[str, str]:
         """Get all index metadata."""
         rows = self.conn.execute("SELECT key, value FROM meta").fetchall()

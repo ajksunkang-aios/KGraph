@@ -35,252 +35,231 @@ Existing tools (codegraph, semcode) parse syntax — KGraph parses **compilation
 
 ---
 
-## Get Started
+## Workflow at a Glance
 
-### Step 1: Prepare a Kernel Build Environment (Docker recommended)
-
-KGraph is compiler-aware — it indexes what the compiler actually sees. You need a kernel build environment
-that can produce `compile_commands.json` with **clang**.
-
-The recommended approach is Docker, which gives you a clean, reproducible build environment
-without polluting your host system:
+Once your kernel has a `compile_commands.json`, the whole setup is three commands:
 
 ```bash
-# Use the provided Dockerfile (or your own kernel build image)
-docker build -t kgraph-linux-build -f Dockerfile .
+# 1. Install the kgraph CLI
+curl -fsSL https://raw.githubusercontent.com/ajksunkang/KGraph/main/install.sh | bash
 
-# Or pull a pre-built image (if available)
-# docker pull ajksunkang/kgraph-linux-build:latest
+# 2. Wire kgraph's MCP server into your AI agents (auto-detects what's installed)
+kgraph install
 
-# Run the build container with kernel source mounted
-docker run -it -v /path/to/linux:/kernel kgraph-linux-build bash
-```
-
-<details>
-<summary><strong>Dockerfile example for Linux x86_64 defconfig</strong></summary>
-
-```dockerfile
-FROM ubuntu:22.04
-
-RUN apt-get update && apt-get install -y \
-    clang llvm gcc make bc flex bison libelf-dev \
-    libssl-dev libncurses-dev python3 python3-pip \
-    git curl protobuf-compiler && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install scip-clang
-RUN curl -fsSL https://github.com/sourcegraph/scip-clang/releases/latest/download/scip-clang-linux-x64.tar.gz \
-    | tar xz -C /usr/local/bin/
-
-WORKDIR /kernel
-```
-
-</details>
-
-**Inside the container** (or any environment with `clang` + `make`):
-
-```bash
-cd /kernel
-
-# Generate x86_64 defconfig
-make CC=clang LLVM=1 x86_64_defconfig
-
-# Build kernel (produces compile_commands.json)
-make CC=clang LLVM=1 -j$(nproc)
-
-# Or generate compile_commands.json without full build:
-make CC=clang LLVM=1 prepare
-scripts/clang-tools/gen_compile_commands.py
-```
-
-<details>
-<summary><strong>Without Docker — native build</strong></summary>
-
-If you prefer building natively, ensure these are installed:
-
-- **clang** (≥ 14) and **LLVM** tools
-- **kernel build dependencies**: `bc flex bison libelf-dev libssl-dev`
-- **scip-clang**: download from [github.com/sourcegraph/scip-clang](https://github.com/sourcegraph/scip-clang)
-
-```bash
-# macOS (Homebrew)
-brew install clang llvm protobuf
-
-# Ubuntu/Debian
-sudo apt install clang llvm protobuf-compiler \
-    bc flex bison libelf-dev libssl-dev
-
-# Then build as above
+# 3. Build the code graph for this kernel (run inside the kernel source dir)
 cd /path/to/linux
+kgraph init .
+```
+
+That's it. Restart your agent and ask it structural questions about the kernel —
+it calls KGraph's MCP tools instead of grepping.
+
+```
+> What functions call ext4_file_read_iter?
+> What implements ->read_iter across the kernel?
+> Show me the body of generic_file_read_iter.
+```
+
+```
+  curl install.sh          kgraph install            kgraph init .
+ ┌──────────────┐        ┌──────────────────┐      ┌────────────────────┐
+ │ kgraph CLI   │   →    │ configure agents │  →   │ scip-clang → SQLite │
+ │ on your PATH │        │ (claude/cursor/  │      │ .kgraph/kgraph.db   │
+ │              │        │  codex/opencode/ │      │ ready for queries   │
+ │              │        │  hermes)         │      │                     │
+ └──────────────┘        └──────────────────┘      └────────────────────┘
+```
+
+> **Prerequisite**: a kernel tree with `compile_commands.json` built using **clang**
+> (`make CC=clang LLVM=1`). See [Detailed Setup](#detailed-setup) below for how to
+> produce it, Docker included.
+
+---
+
+## Detailed Setup
+
+### Step 0 (prerequisite): Build `compile_commands.json` with clang
+
+KGraph is compiler-aware — it indexes what the compiler actually sees, so it needs a
+clang compilation database. Docker gives you a clean, reproducible build environment:
+
+```bash
+docker run --platform linux/amd64 -it --rm \
+  -v "$(pwd):/workspace" -w /workspace ubuntu:latest
+
+# Inside the container:
+apt-get update && apt-get install -y clang llvm make bc flex bison libelf-dev libssl-dev
 make CC=clang LLVM=1 x86_64_defconfig
 make CC=clang LLVM=1 -j$(nproc)
+./scripts/clang-tools/gen_compile_commands.py
+```
+
+This produces `compile_commands.json` (~5–50 MB) listing exactly the `.c` files your
+`defconfig` compiles, with the exact compiler flags. **This config-awareness is what
+makes KGraph different from syntax-only tools.**
+
+<details>
+<summary><strong>Generate index.scip with scip-clang</strong></summary>
+
+`kgraph init` runs this for you, but you can also run it directly. `scip-clang` is a
+Linux x86-64 binary — run it in the same Docker/Linux environment:
+
+```bash
+# Inside the container, with scip-clang available:
+./scip-tools/scip-clang --compdb-path ./compile_commands.json
+# → produces index.scip (~hundreds of MB for a full defconfig)
 ```
 
 </details>
 
-### Step 2: Build `compile_commands.json`
-
-This step produces the compilation database — the list of exactly which `.c` files get compiled
-under your chosen config, with the exact compiler flags.
-
-```bash
-# Inside the build environment (Docker or native):
-cd /kernel
-
-# Full build + compile_commands.json
-make CC=clang LLVM=1 -j$(nproc)
-scripts/clang-tools/gen_compile_commands.py
-
-# Verify it exists
-ls -lh compile_commands.json
-# Should be ~5-50MB depending on config scope
-```
-
-**Key point**: `compile_commands.json` is config-aware — it only lists the files that your `defconfig`
-actually compiles. This is what makes KGraph different from syntax-only tools.
-
-### Step 3: Install KGraph
+### Step 1: Install the kgraph CLI
 
 ```bash
 # macOS / Linux
 curl -fsSL https://raw.githubusercontent.com/ajksunkang/KGraph/main/install.sh | bash
 ```
 
-This downloads `kgraph` to `~/.local/bin` and registers it on your `PATH`.
+Downloads `kgraph` to `~/.local/bin` and registers it on your `PATH`.
 Open a **new terminal** so the command resolves.
 
-<sub>Already have the repo cloned? You can also run `./install.sh` from the project root.</sub>
+<sub>Already cloned the repo? Run `./install.sh` from the project root instead.</sub>
 
-### Step 4: Initialize KGraph in the Kernel Source
-
-```bash
-# Inside the build environment, in the kernel source directory:
-cd /kernel
-kgraph init .
-```
-
-`kgraph init` does the following automatically:
-
-1. **Create venv** — sets up a Python 3.10+ virtual environment at `.venv/` within the KGraph project
-2. **Install protobuf** — installs `protobuf>=7.35.0` (upb format) into the venv,
-   matching the protoc version used to generate `scip_pb2.py`
-3. **Index** — runs `scip-clang --compilation-database compile_commands.json` → `index.scip`
-4. **Ingest** — parses SCIP protobuf, derives call graph + ops bindings, writes into `.kgraph/kgraph.db`
-5. **Enrich** — maps MAINTAINERS → subsystem labels
-
-<details>
-<summary><strong>Manual venv setup (if kgraph init fails)</strong></summary>
-
-If the automatic venv setup doesn't work (e.g. no python3.10+ on the system),
-set it up manually:
-
-```bash
-# Find python3.10+ on your system
-# macOS (Homebrew): /opt/homebrew/bin/python3.10
-# Linux: /usr/bin/python3.10 or python3.12
-
-PYTHON3=/opt/homebrew/bin/python3.10   # adjust to your system
-
-# Create venv in KGraph project
-$PYTHON3 -m venv /path/to/KGraph/.venv
-
-# Activate and install protobuf
-source /path/to/KGraph/.venv/bin/activate
-pip install "protobuf>=7.35.0,<8"
-
-# Verify
-python -c "import google.protobuf; print(google.protobuf.__version__)"
-# Should print: 7.35.0
-```
-
-</details>
-
-<details>
-<summary><strong>Indexing scope options</strong></summary>
-
-```bash
-# Skip build step (compile_commands.json already exists):
-kgraph init . --skip-build
-
-# Index only a subsystem (faster for MVP / testing):
-kgraph init . --subsystem fs/ext4
-
-# Force full re-index:
-kgraph init . --force
-
-# Multiple subsystems
-kgraph init . --subsystem fs/ext4,net/ipv4,mm
-```
-
-</details>
-
-### Step 5: Install MCP Tools into Your Code Agent
+### Step 2: Configure your AI agents
 
 ```bash
 kgraph install
 ```
 
-Detects and auto-configures MCP server integration for installed agents:
+`kgraph install` runs a `detect()` pass that reads each agent's config file/dir,
+identifies which AI agents are present on your system, and **auto-configures the
+detected ones**. Supported agents and where they're configured:
 
-- **Claude Code** — writes MCP server config + auto-allow permissions
-- **Cursor** — writes `.cursor/mcp.json`
-- **Codex CLI** — writes MCP config
-- **Other MCP-compatible agents** — prints the config snippet for manual wiring
-
-<details>
-<summary><strong>Non-interactive (scripting / CI)</strong></summary>
+| Agent | Config file | Format |
+|---|---|---|
+| **Claude Code** | `~/.claude.json` + `~/.claude/settings.json` | JSON `mcpServers` + permissions |
+| **Cursor** | `~/.cursor/mcp.json` | JSON `mcpServers` |
+| **Codex CLI** | `~/.codex/config.toml` | TOML `[mcp_servers.kgraph]` |
+| **opencode** | `~/.config/opencode/opencode.json` | JSONC `mcp.kgraph` |
+| **Hermes Agent** | `~/.hermes/config.yaml` | YAML `mcp_servers` + toolsets |
 
 ```bash
-kgraph install --yes                          # auto-detect agents, accept defaults
-kgraph install --target=claude,cursor --yes    # explicit agent list
-kgraph install --print-config claude           # print snippet, no file writes
+kgraph detect                          # show what's detected, write nothing
+kgraph install                         # auto-detect & configure installed agents
+kgraph install --target claude,cursor  # configure specific agents
+kgraph install --location local        # per-project config (./.mcp.json etc.)
+kgraph uninstall                       # remove kgraph config from all agents
 ```
 
-| Flag | Values | Default |
-|---|---|---|
-| `--target` | `auto`, `all`, `none`, or csv (`claude,cursor,...`) | prompt |
-| `--yes` | (boolean) accept defaults | prompt every step |
-| `--print-config <id>` | dump snippet for one agent and exit | — |
+<sub>Prefer manual setup? See [`mcp/examples/`](mcp/examples/) — ready-to-edit config
+snippets for every agent.</sub>
+
+### Step 3: Build the code graph
+
+```bash
+cd /path/to/linux        # the kernel source dir (where compile_commands.json lives)
+kgraph init .
+```
+
+`kgraph init` does the following automatically:
+
+1. **venv** — sets up a Python 3.10+ virtual environment with `protobuf>=7.35` (upb)
+2. **Index** — runs `scip-clang --compdb-path compile_commands.json` → `index.scip`
+   (skipped if `index.scip` already exists)
+3. **Ingest** — parses the SCIP protobuf, derives the call graph + `ops_bind` edges,
+   writes everything into `./.kgraph/kgraph.db`
+4. **Enrich** — maps MAINTAINERS → subsystem labels
+
+Everything stays inside the kernel tree (`index.scip`, `.kgraph/kgraph.db`) — the graph
+is per-project, so each kernel you index gets its own database.
+
+```bash
+kgraph init . --skip-build                # index.scip already exists, just ingest
+kgraph init . --subsystem fs/ext4         # scope to a subsystem (faster)
+kgraph init . --force                     # rebuild from scratch
+```
+
+<details>
+<summary><strong>Manual venv setup (if kgraph init can't find python3.10+)</strong></summary>
+
+```bash
+# Find a python3.10+ on your system, then:
+python3.10 -m venv /path/to/KGraph/.venv
+source /path/to/KGraph/.venv/bin/activate
+pip install "protobuf>=7.35.0,<8"
+python -c "import google.protobuf; print(google.protobuf.__version__)"   # → 7.35.0
+```
 
 </details>
 
-### Step 6: Use Your Agent with KGraph
+### Step 4: Use your agent
 
-Restart your agent so the MCP server loads. Then ask questions:
+Restart your agent so the MCP server loads. It now has KGraph's tools — ask structural
+questions and it queries the graph instead of grepping:
 
 ```
-> What functions call ext4_file_read_iter?
-> How does a read request flow from VFS down to ext4?
-> Which subsystem owns mm/page_alloc.c?
-> Find all implementations of file_operations.read_iter
+> What functions call ext4_file_read_iter?           → find_callers
+> What does generic_file_read_iter call?             → find_callees
+> Show me the body of ext4_file_read_iter.           → get_function_body
+> What implements ->read_iter across the kernel?     → find_ops_impls
+> Where is vfs_read referenced?                       → find_references
 ```
-
-Your agent will call KGraph MCP tools automatically when `.kgraph/` exists in the project root.
 
 ---
 
 ## MCP Tools
 
+KGraph exposes **12 tools** — a minimal viable set covering the most common agent
+code-indexing needs. Every tool is config-aware and compiler-resolved.
+
+### Symbol lookup
+
 | Tool | Purpose | Key params |
 |---|---|---|
-| `search_symbols(q)` | Find symbols by name / regex / FTS | `kind, limit` |
-| `get_definition(sym)` | Definition location + signature (no full file) | — |
-| `find_callers(sym)` | Who calls this function (reverse call graph) | `depth, limit` |
-| `find_callees(sym)` | What this function calls (forward call graph) | `depth, limit` |
-| `get_neighborhood(sym)` | N-hop subgraph — the most token-efficient context pack | `depth, edge_types, summary` |
-| `call_path(a, b)` | Call path between two functions | `max_len` |
-| `get_struct_layout(type)` | Struct fields and layout | — |
-| `find_ops_impls(field)` | Function-pointer field → all candidate implementations **★** | `struct_type` |
-| `which_subsystem(sym)` | MAINTAINERS subsystem ownership | — |
-| `expand_macro(name)` | Macro definition body | — |
+| `search_symbols(query)` | Fuzzy full-text search by name (FTS5) | `kind, limit` |
+| `get_symbol(name)` | Exact-name lookup → definition + signature | `kind, limit` |
+| `get_function_body(name)` | Read the actual source body from disk (with line numbers) | `kind, context` |
 
-**★ `find_ops_impls` is the killer tool** — it resolves indirect calls through kernel function-pointer
-tables (VFS ops, driver ops, net proto ops) that syntax-based tools cannot follow.
+### Call graph & references
 
-### Token Budget Control
+| Tool | Purpose | Key params |
+|---|---|---|
+| `find_callers(name)` | Who calls this function — **includes `ops_bind`** | `depth, limit` |
+| `find_callees(name)` | What this function calls — **includes `ops_bind`** | `depth, limit` |
+| `call_path(source, target)` | Call path between two functions | `max_len` |
+| `find_references(name)` | Every use site of a symbol, with enclosing function | `limit` |
 
-Every tool accepts `summary=true` to return only names + file:line (no signatures, no docs, no source).
-Combined with `depth` and `limit`, agents stay within budget instead of exploding into full subgraphs.
+### Types & structure
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `find_type_definition(name)` | Go-to-type-definition (`type_of` edges) | — |
+| `get_struct_layout(name)` | Struct fields (`contains` edges) | — |
+| `get_neighborhood(name)` | N-hop subgraph — token-efficient context pack | `depth, edge_types, summary` |
+
+### Kernel-specific & meta
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `find_ops_impls(field_name)` | **★** Function-pointer field → all implementations | `struct_type` |
+| `index_status()` | Index metadata + statistics | — |
+
+**★ `find_ops_impls` is the killer tool.** It resolves indirect calls through kernel
+function-pointer tables (VFS ops, driver ops, net proto ops) that grep and syntax-based
+tools cannot follow. One call to `find_ops_impls("read_iter")` returns every filesystem
+and driver `read_iter` implementation across the kernel:
+
+```
+ext4_file_operations    → ext4_file_read_iter   @ fs/ext4/file.c
+shmem_file_operations   → shmem_file_read_iter  @ mm/shmem.c
+socket_file_ops         → sock_read_iter        @ net/socket.c
+... (16 found)
+```
+
+### Token budget control
+
+`find_callers`/`find_callees` accept `depth` and `limit`; `get_neighborhood` returns
+compact `name + file:line` by default (`summary=true`). Agents stay within budget instead
+of exploding into full subgraphs.
 
 ---
 
@@ -289,47 +268,51 @@ Combined with `depth` and `limit`, agents stay within budget instead of explodin
 ```
 ┌───────────────────────────────────────────────────────────────┐
 │                        Your Code Agent                         │
-│                                                               │
-│  "How does a read reach ext4_file_read_iter?"                 │
-│         calls KGraph tools directly                           │
-│                         │                                     │
-└─────────────────────────┼─────────────────────────────────────┘
-                          │
-                          ▼
+│  "What implements ->read_iter?" → calls KGraph tools directly  │
+└─────────────────────────────────┬─────────────────────────────┘
+                                  │
+                                  ▼
 ┌───────────────────────────────────────────────────────────────┐
-│                     KGraph MCP Server                          │
-│                                                               │
-│   search / callers / callees / neighborhood / ops_impls / ..  │
-│                         │                                     │
-│                         ▼                                     │
-│              SQLite knowledge graph (.kgraph/kgraph.db)       │
-│   symbols · occurrences · edges · ops_bind · subsystem        │
+│                     KGraph MCP Server (12 tools)               │
+│  search · get_symbol · get_function_body · callers · callees   │
+│  call_path · references · type_definition · struct_layout      │
+│  neighborhood · ops_impls · index_status                       │
+│                                  │                             │
+│                                  ▼                             │
+│              SQLite knowledge graph (.kgraph/kgraph.db)        │
+│   symbols · occurrences · edges · ops_bind · subsystem         │
 └───────────────────────────────────────────────────────────────┘
 ```
 
 1. **Build** — `make CC=clang LLVM=1` produces `compile_commands.json` (what the compiler actually compiles).
 2. **Index** — `scip-clang` emits `index.scip` with full semantic symbol information per compilation unit.
-3. **Ingest** — Python (protobuf 7.x / upb) parses SCIP, derives call edges from `enclosing_range`,
-   derives `ops_bind` edges from function-pointer table initializations, writes into SQLite.
+3. **Ingest** — Python (protobuf 7.x / upb) parses SCIP into `IngestBatch` objects, derives call edges
+   from `enclosing_range`, derives `ops_bind` edges from function-pointer table initializations,
+   writes into SQLite via the `GraphStore` interface.
 4. **Enrich** — `KernelProfile` maps MAINTAINERS → subsystem labels, tags config-gated symbols.
 5. **Serve** — MCP server exposes graph queries via recursive CTE on SQLite.
+
+The `IngestBatch` → `GraphStore` boundary keeps the parser fully decoupled from storage,
+so swapping SQLite for another backend (Neo4j, a custom embedded DB) means implementing
+one new `GraphStore` — the parser, MCP tools, and agent integration don't change.
 
 ---
 
 ## CLI Reference
 
 ```bash
-kgraph install                     # Register MCP server into code agents
-kgraph init <path>                 # Build + index + ingest (--skip-build, --subsystem, --force)
-kgraph index <path>                # Re-index SCIP only (no rebuild)
-kgraph ingest <path>               # Re-ingest from existing index.scip
-kgraph serve --mcp                 # Start MCP server (usually auto-launched by agent)
-kgraph query <search>              # CLI symbol search (--kind, --limit, --json)
-kgraph callers <symbol>            # CLI reverse call graph
-kgraph callees <symbol>            # CLI forward call graph
-kgraph status <path>               # Show index statistics and health
-kgraph uninstall                   # Remove MCP config from all agents
-kgraph uninit <path>               # Remove .kgraph/ from a project
+# Agent integration
+kgraph install                     # auto-detect & configure installed agents
+kgraph install --target <ids>      # configure specific agents (claude,cursor,codex,opencode,hermes)
+kgraph install --location <loc>    # global (default) or local (per-project)
+kgraph detect                      # show detected agents, write nothing
+kgraph uninstall                   # remove kgraph config from agents
+
+# Index lifecycle (run in the kernel source dir)
+kgraph init <path>                 # index + ingest (--skip-build, --subsystem, --force)
+kgraph ingest <path>               # re-ingest from an existing index.scip
+kgraph serve --mcp                 # start the MCP server (usually auto-launched by the agent)
+kgraph status <path>               # show index statistics and health
 ```
 
 ---
@@ -373,21 +356,35 @@ See [DESIGN.md §6](docs/DESIGN.md) for the profile architecture.
 
 ```
 KGraph/
+├── README.md / README.zh-CN.md     # this file (EN / 中文)
+├── install.sh                      # one-line CLI installer
 ├── docs/
-│   ├── DESIGN.md          # Full architecture & rationale
-├── README.md              # This file (English)
+│   ├── DESIGN.md / DESIGN.zh-CN.md  # full architecture & rationale
+│   └── scip-parser-design.md        # SCIP parser design notes
 ├── thirdparty/
-│   └── scip.proto         # Canonical SCIP protobuf schema
+│   └── scip.proto                  # canonical SCIP protobuf schema
 ├── scripts/
-│   └── scip_pb2.py        # Generated Python protobuf bindings (protobuf 7.x / upb)
-├── .venv/                 # Python 3.10+ venv with protobuf>=7.35
+│   └── scip_pb2.py                 # generated protobuf bindings (7.x / upb)
 ├── src/
-│   ├── libkgraph/         # C: SCIP parser, SQLite bulk ingest, graph derivation
-│   ├── kgraph/            # Python: CLI, KernelProfile, QueryEngine, MCP server
-│   └── mcp/               # Python: MCP tool definitions & server
-├── tests/
-└── docs/
-    └── scip-parser-design.md  # SCIP parser design notes
+│   ├── parser/                     # SCIP protobuf → IngestBatch
+│   │   ├── models.py               #   data model (the parser↔storage contract)
+│   │   ├── scip_parser.py          #   parse + enclosing match + ops_bind derivation
+│   │   └── symbol_name.py          #   SCIP symbol-string parser
+│   ├── storage/                    # graph persistence
+│   │   ├── graph_store.py          #   GraphStore interface (extension point)
+│   │   └── sqlite_store.py         #   SQLite backend (WAL · FTS5 · recursive CTE)
+│   └── installer/                  # agent auto-config
+│       ├── orchestrator.py         #   detect() / install() / uninstall()
+│       ├── cli.py                  #   `kgraph install` CLI
+│       └── targets/                #   claude · cursor · codex · opencode · hermes
+├── mcp/
+│   ├── server.py                   # MCP server (12 tools)
+│   ├── source_reader.py            # reads function bodies from disk
+│   └── examples/                   # per-agent manual config snippets
+└── tests/
+    ├── test_parser_store.py        # parser → SQLite pipeline
+    ├── test_mcp_server.py          # MCP tool smoke test
+    └── ingest_real.py              # full-kernel ingestion
 ```
 
 ---
@@ -397,26 +394,20 @@ KGraph/
 If you're developing KGraph (not just using it as an end-user):
 
 ```bash
-# Clone the repo
 git clone https://github.com/ajksunkang/KGraph.git
 cd KGraph
 
-# Create and activate venv
-/opt/homebrew/bin/python3.10 -m venv .venv   # or any python3.10+ on your system
+# Create venv with any python3.10+ and install protobuf 7.x (upb, matches protoc 35)
+python3.10 -m venv .venv
 source .venv/bin/activate
-
-# Install protobuf 7.x (upb format, matches protoc 35)
 pip install "protobuf>=7.35.0,<8"
+python -c "import google.protobuf; print(google.protobuf.__version__)"   # → 7.35.0
 
-# Verify
-python -c "import google.protobuf; print(google.protobuf.__version__)"
-# → 7.35.0
-
-# Regenerate scip_pb2.py (only if you change thirdparty/scip.proto)
+# Regenerate scip_pb2.py only if you change thirdparty/scip.proto
 protoc --proto_path=thirdparty --python_out=scripts thirdparty/scip.proto
 
-# Verify generated bindings
-python -c "import sys; sys.path.insert(0,'scripts'); import scip_pb2; print('OK')"
+# Run tests (point KGRAPH_ROOT at an indexed kernel tree)
+KGRAPH_ROOT=/path/to/linux .venv/bin/python tests/test_mcp_server.py
 ```
 
 ---
@@ -424,8 +415,8 @@ python -c "import sys; sys.path.insert(0,'scripts'); import scip_pb2; print('OK'
 ## Uninstall
 
 ```bash
-kgraph uninstall               # Remove MCP config from all agents
-kgraph uninit /path/to/linux   # Remove .kgraph/ from a project
+kgraph uninstall               # remove kgraph MCP config from all agents
+rm -rf /path/to/linux/.kgraph  # remove the graph database from a project
 ```
 
 ---

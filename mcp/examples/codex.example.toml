@@ -1,0 +1,26 @@
+# ─────────────────────────────────────────────────────────────
+# Codex CLI — KGraph MCP server config
+# ─────────────────────────────────────────────────────────────
+#
+# WHERE TO PUT THIS:
+#   ~/.codex/config.toml        (Codex has no project-local config —
+#                                everything lives under ~/.codex/)
+#
+# Append the [mcp_servers.kgraph] table to your existing config.toml
+# (don't remove other [mcp_servers.*] tables you already have).
+#
+# ADJUST THESE PATHS to your machine:
+#   command       → your KGraph venv python
+#   args          → [ path to KGraph/mcp/server.py ]
+#   env.KGRAPH_ROOT → the kernel source tree you indexed
+#   env.KGRAPH_DB   → that tree's .kgraph/kgraph.db
+#
+# If you installed kgraph on PATH (via install.sh), you can instead use:
+#   command = "kgraph"
+#   args = ["serve", "--mcp"]
+# ─────────────────────────────────────────────────────────────
+
+[mcp_servers.kgraph]
+command = "/path/to/KGraph/.venv/bin/python"
+args = ["/path/to/KGraph/mcp/server.py"]
+env = { "KGRAPH_ROOT" = "/path/to/linux", "KGRAPH_DB" = "/path/to/linux/.kgraph/kgraph.db" }
