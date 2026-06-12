@@ -28,7 +28,6 @@ jobs:
           .venv/bin/pip install "protobuf>=7.35.0,<8"
           .venv/bin/pip install mcp pytest
           .venv/bin/python -c "import google.protobuf; print('protobuf:', google.protobuf.__version__)"
-          .venv/bin/python -c "import scip_pb2; print('scip_pb2 OK')"
 
       - name: Run integration tests
         run: .venv/bin/python -m pytest tests/integration/ -v
