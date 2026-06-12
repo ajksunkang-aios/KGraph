@@ -371,9 +371,13 @@ KGraph/
 │   ├── source_reader.py            # 从磁盘读函数体
 │   └── examples/                   # 各 agent 手动配置示例
 └── tests/
-    ├── test_parser_store.py        # parser → SQLite 管线
-    ├── test_mcp_server.py          # MCP 工具 smoke test
-    └── ingest_real.py              # 全量内核灌库
+    ├── conftest.py                  # 共享 fixture 与合成 SCIP benchmark
+    ├── unit/                        # 单元测试（纯函数，参数化）
+    ├── integration/                 # 集成测试（合成数据，不需要真实内核）
+    │   ├── test_scip_pipeline.py    #   index.scip → parser → store（41 tests）
+    │   └── test_mcp_server.py       #   MCP 工具 → kgraph.db（31 tests）
+    └── real/                        # 真实内核案例测试（手动脚本）
+        └── ingest_real.py           #   全量内核灌库
 ```
 
 ---
@@ -386,18 +390,25 @@ KGraph/
 git clone https://github.com/ajksunkang/KGraph.git
 cd KGraph
 
-# 用任何 python3.10+ 建 venv 并装 protobuf 7.x（upb，匹配 protoc 35）
+# 用任何 python3.10+ 建 venv 并安装依赖
 python3.10 -m venv .venv
 source .venv/bin/activate
-pip install "protobuf>=7.35.0,<8"
+pip install "protobuf>=7.35.0,<8" mcp pytest
 python -c "import google.protobuf; print(google.protobuf.__version__)"   # → 7.35.0
 
 # 仅当修改 thirdparty/scip.proto 时才需重新生成 scip_pb2.py
 protoc --proto_path=thirdparty --python_out=scripts thirdparty/scip.proto
 
-# 运行测试（KGRAPH_ROOT 指向已索引的内核树）
-KGRAPH_ROOT=/path/to/linux .venv/bin/python tests/test_mcp_server.py
+# 运行测试（全部合成数据，不需要真实内核）
+pytest tests/ -v                          # 全部测试
+pytest tests/integration/ -v              # 仅集成测试
+pytest tests/unit/ -v                     # 仅单元测试
+
+# 运行真实内核灌库（需要内核树的 index.scip）
+KGRAPH_ROOT=/path/to/linux python tests/real/ingest_real.py
 ```
+
+完整测试设计与覆盖范围见 [`docs/TESTING.md`](docs/TESTING.md)。
 
 ---
 

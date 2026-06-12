@@ -382,9 +382,13 @@ KGraph/
 │   ├── source_reader.py            # reads function bodies from disk
 │   └── examples/                   # per-agent manual config snippets
 └── tests/
-    ├── test_parser_store.py        # parser → SQLite pipeline
-    ├── test_mcp_server.py          # MCP tool smoke test
-    └── ingest_real.py              # full-kernel ingestion
+    ├── conftest.py                  # shared fixtures & synthetic SCIP benchmark
+    ├── unit/                        # unit tests (pure functions, parametrized)
+    ├── integration/                 # integration tests (synthetic data, no kernel needed)
+    │   ├── test_scip_pipeline.py    #   index.scip → parser → store (41 tests)
+    │   └── test_mcp_server.py       #   MCP tools → kgraph.db (31 tests)
+    └── real/                        # real-kernel case tests (manual scripts)
+        └── ingest_real.py           #   full-kernel ingestion
 ```
 
 ---
@@ -397,18 +401,25 @@ If you're developing KGraph (not just using it as an end-user):
 git clone https://github.com/ajksunkang/KGraph.git
 cd KGraph
 
-# Create venv with any python3.10+ and install protobuf 7.x (upb, matches protoc 35)
+# Create venv with any python3.10+ and install dependencies
 python3.10 -m venv .venv
 source .venv/bin/activate
-pip install "protobuf>=7.35.0,<8"
+pip install "protobuf>=7.35.0,<8" mcp pytest
 python -c "import google.protobuf; print(google.protobuf.__version__)"   # → 7.35.0
 
 # Regenerate scip_pb2.py only if you change thirdparty/scip.proto
 protoc --proto_path=thirdparty --python_out=scripts thirdparty/scip.proto
 
-# Run tests (point KGRAPH_ROOT at an indexed kernel tree)
-KGRAPH_ROOT=/path/to/linux .venv/bin/python tests/test_mcp_server.py
+# Run tests (all synthetic, no real kernel needed)
+pytest tests/ -v                          # all tests
+pytest tests/integration/ -v              # integration tests only
+pytest tests/unit/ -v                     # unit tests only
+
+# Run real-kernel ingestion (requires index.scip from a kernel tree)
+KGRAPH_ROOT=/path/to/linux python tests/real/ingest_real.py
 ```
+
+See [`docs/TESTING.md`](docs/TESTING.md) for the full test design and coverage details.
 
 ---
 
