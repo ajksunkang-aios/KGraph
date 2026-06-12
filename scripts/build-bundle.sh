@@ -50,7 +50,8 @@ echo "[2/5] Installing Python dependencies..."
 "${BUNDLE_DIR}/python" -m pip install --target "${BUNDLE_DIR}/lib/site-packages" \
   --no-cache-dir --no-compile \
   "protobuf>=7.35.0,<8" \
-  mcp
+  mcp \
+  trio
 
 # ── 3. Copy KGraph source ──
 echo "[3/5] Copying KGraph source..."
@@ -82,11 +83,23 @@ CMD="${1:-serve}"
 shift || true
 
 case "$CMD" in
-  init|install|uninstall|detect|serve|status|ingest)
-    exec "$PYTHON" -m mcp.server "$CMD" "$@"
+  install|detect|uninstall)
+    # Agent configuration commands → installer CLI
+    exec "$PYTHON" "$DIR/lib/kgraph/src/installer/cli.py" "$CMD" "$@"
+    ;;
+  serve)
+    # MCP stdio server (used by AI agents via MCP protocol)
+    exec "$PYTHON" "$DIR/lib/kgraph/mcp/server.py" "$@"
+    ;;
+  init|ingest|status)
+    # Index lifecycle commands (TODO: implement kgraph CLI)
+    echo "kgraph: '$CMD' is not yet implemented. See https://github.com/ajksunkang/KGraph/issues"
+    exit 1
     ;;
   *)
-    exec "$PYTHON" -m mcp.server "$@"
+    echo "kgraph: unknown command '$CMD'"
+    echo "Usage: kgraph {install|detect|uninstall|serve} [options]"
+    exit 1
     ;;
 esac
 LAUNCHER_EOF
