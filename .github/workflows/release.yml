@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 0.1.0)'
+        description: 'Version to release (e.g. 0.1.1)'
         required: true
         type: string
 
@@ -38,14 +38,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Extract version
         id: version
         run: |
           if [ -n "${{ github.event.inputs.version }}" ]; then
-            echo "VERSION=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+            # Strip leading 'v' if user typed v0.1.1 instead of 0.1.1
+            RAW="${{ github.event.inputs.version }}"
           else
-            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            RAW="${GITHUB_REF_NAME#v}"
+          fi
+          VERSION="${RAW#v}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Releasing version: ${VERSION}"
+
+      - name: Create tag (manual trigger only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          TAG="v${{ steps.version.outputs.VERSION }}"
+          if git tag -l "$TAG" | grep -q .; then
+            echo "Tag $TAG already exists, skipping."
+          else
+            git tag "$TAG"
+            git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "$TAG"
           fi
 
       - name: Build platform bundle
@@ -61,6 +78,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.version.outputs.VERSION }}
           name: KGraph v${{ steps.version.outputs.VERSION }}
           files: |
             release/*.tar.gz
