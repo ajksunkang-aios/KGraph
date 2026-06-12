@@ -16,8 +16,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 VERSION="${1:-0.1.0}"
 
-PYTHON_STANDALONE_VERSION="cpython-3.10.16+20241016-x86_64-unknown-linux-gnu-install_only"
-PYTHON_STANDALONE_URL="https://github.com/indygreg/python-build-standalone/releases/download/20241016/${PYTHON_STANDALONE_VERSION}.tar.gz"
+# python-build-standalone: https://github.com/astral-sh/python-build-standalone
+# Use the latest release with cpython-3.10 + x86_64-unknown-linux-gnu + install_only_stripped
+PYTHON_STANDALONE_RELEASE="20260610"
+PYTHON_STANDALONE_FILE="cpython-3.10.20+20260610-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
+PYTHON_STANDALONE_URL="https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_STANDALONE_RELEASE}/${PYTHON_STANDALONE_FILE}"
 
 BUNDLE_NAME="kgraph-linux-x64"
 RELEASE_DIR="${PROJECT_ROOT}/release"
