@@ -41,8 +41,8 @@ _KGraph 索引的是**编译器**看到的真相——不是解析器猜的语�
 只要你的内核有了 `compile_commands.json`，整个配置就是三条命令：
 
 ```bash
-# 1. 安装 kgraph CLI
-curl -fsSL https://raw.githubusercontent.com/ajksunkang/KGraph/main/install.sh | bash
+# 1. 安装 kgraph（内置 Python 3.10 + scip-clang，仅 Linux x86-64）
+npm install -g @ajksunkang-aios/kgraph
 
 # 2. 把 kgraph 的 MCP 服务接入你的 AI agent（自动检测已安装的 agent）
 kgraph install
@@ -61,13 +61,13 @@ kgraph init .
 ```
 
 ```
-  curl install.sh          kgraph install            kgraph init .
- ┌──────────────┐        ┌──────────────────┐      ┌────────────────────┐
- │ kgraph CLI   │   →    │   配置 agent      │  →   │ scip-clang → SQLite │
- │ 装到 PATH    │        │ (claude/cursor/  │      │ .kgraph/kgraph.db   │
- │              │        │  codex/opencode/ │      │ 可供查询            │
- │              │        │  hermes)         │      │                     │
- └──────────────┘        └──────────────────┘      └────────────────────┘
+  npm install                kgraph install            kgraph init .
+ ┌──────────────────┐      ┌──────────────────┐      ┌────────────────────┐
+ │ @ajksunkang-aios │  →   │   配置 agent      │  →   │ scip-clang → SQLite │
+ │ /kgraph          │      │ (claude/cursor/  │      │ .kgraph/kgraph.db   │
+ │ (Python 已内置)  │      │  codex/opencode/ │      │ 可供查询            │
+ │                  │      │  hermes)         │      │                     │
+ └──────────────────┘      └──────────────────┘      └────────────────────┘
 ```
 
 > **前提**：一个用 **clang** 构建出 `compile_commands.json` 的内核树
@@ -110,16 +110,14 @@ make CC=clang LLVM=1 -j$(nproc)
 
 </details>
 
-### 第 1 步：安装 kgraph CLI
+### 第 1 步：安装 kgraph
 
 ```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/ajksunkang/KGraph/main/install.sh | bash
+# Linux x86-64（内置 Python 3.10 + scip-clang，无需预装任何依赖）
+npm install -g @ajksunkang-aios/kgraph
 ```
 
-下载 `kgraph` 到 `~/.local/bin` 并注册到 `PATH`。打开**新终端**让命令生效。
-
-<sub>已经克隆了仓库？也可以从项目根目录直接运行 `./install.sh`。</sub>
+npm 包含内置的 Python 3.10 运行时和所有依赖——无需单独安装 Python、pip 或 protobuf。
 
 ### 第 2 步：配置你的 AI agent
 
@@ -346,9 +344,11 @@ kgraph status <path>               # 查看索引统计与健康
 ```
 KGraph/
 ├── README.md / README.zh-CN.md     # 本文件（英文 / 中文）
-├── install.sh                      # 一键 CLI 安装脚本
+├── npm-shim.js                     # npm bin 入口（薄壳启动器）
 ├── docs/
 │   ├── DESIGN.md / DESIGN.zh-CN.md  # 架构与设计理念
+│   ├── TESTING.md                   # 测试设计与覆盖
+│   ├── NPM-PACKAGING-DESIGN.md      # npm 打包设计
 │   └── scip-parser-design.md        # SCIP 解析器设计笔记
 ├── thirdparty/
 │   └── scip.proto                  # SCIP protobuf 规范

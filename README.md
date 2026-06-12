@@ -40,8 +40,8 @@ Existing tools (codegraph, semcode) parse syntax — KGraph parses **compilation
 Once your kernel has a `compile_commands.json`, the whole setup is three commands:
 
 ```bash
-# 1. Install the kgraph CLI
-curl -fsSL https://raw.githubusercontent.com/ajksunkang/KGraph/main/install.sh | bash
+# 1. Install kgraph (bundles Python 3.10 + scip-clang, Linux x86-64 only)
+npm install -g @ajksunkang-aios/kgraph
 
 # 2. Wire kgraph's MCP server into your AI agents (auto-detects what's installed)
 kgraph install
@@ -61,13 +61,13 @@ it calls KGraph's MCP tools instead of grepping.
 ```
 
 ```
-  curl install.sh          kgraph install            kgraph init .
- ┌──────────────┐        ┌──────────────────┐      ┌────────────────────┐
- │ kgraph CLI   │   →    │ configure agents │  →   │ scip-clang → SQLite │
- │ on your PATH │        │ (claude/cursor/  │      │ .kgraph/kgraph.db   │
- │              │        │  codex/opencode/ │      │ ready for queries   │
- │              │        │  hermes)         │      │                     │
- └──────────────┘        └──────────────────┘      └────────────────────┘
+  npm install                kgraph install            kgraph init .
+ ┌──────────────────┐      ┌──────────────────┐      ┌────────────────────┐
+ │ @ajksunkang-aios │  →   │ configure agents │  →   │ scip-clang → SQLite │
+ │ /kgraph          │      │ (claude/cursor/  │      │ .kgraph/kgraph.db   │
+ │ (Python bundled) │      │  codex/opencode/ │      │ ready for queries   │
+ │                  │      │  hermes)         │      │                     │
+ └──────────────────┘      └──────────────────┘      └────────────────────┘
 ```
 
 > **Prerequisite**: a kernel tree with `compile_commands.json` built using **clang**
@@ -112,17 +112,15 @@ Linux x86-64 binary — run it in the same Docker/Linux environment:
 
 </details>
 
-### Step 1: Install the kgraph CLI
+### Step 1: Install kgraph
 
 ```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/ajksunkang/KGraph/main/install.sh | bash
+# Linux x86-64 (bundles Python 3.10 + scip-clang, no pre-requisites needed)
+npm install -g @ajksunkang-aios/kgraph
 ```
 
-Downloads `kgraph` to `~/.local/bin` and registers it on your `PATH`.
-Open a **new terminal** so the command resolves.
-
-<sub>Already cloned the repo? Run `./install.sh` from the project root instead.</sub>
+The npm package includes a vendored Python 3.10 runtime and all dependencies —
+no need to install Python, pip, or protobuf separately.
 
 ### Step 2: Configure your AI agents
 
@@ -357,9 +355,11 @@ See [DESIGN.md §6](docs/DESIGN.md) for the profile architecture.
 ```
 KGraph/
 ├── README.md / README.zh-CN.md     # this file (EN / 中文)
-├── install.sh                      # one-line CLI installer
+├── npm-shim.js                     # npm bin entry point (thin launcher)
 ├── docs/
 │   ├── DESIGN.md / DESIGN.zh-CN.md  # full architecture & rationale
+│   ├── TESTING.md                   # test design & coverage
+│   ├── NPM-PACKAGING-DESIGN.md      # npm packaging design
 │   └── scip-parser-design.md        # SCIP parser design notes
 ├── thirdparty/
 │   └── scip.proto                  # canonical SCIP protobuf schema
