@@ -434,6 +434,24 @@ class SCIPParser:
                         type=EdgeType.DEFINES,
                     ))
 
+        # ── Step 6: Derive contains edges from enclosing_symbol ──
+        # If a symbol has an enclosing_symbol (e.g. struct field → struct),
+        # create a contains edge so get_struct_layout can discover fields.
+
+        for sym_rec in symbol_records:
+            if not sym_rec.enclosing_symbol:
+                continue
+            # Only emit contains if the enclosing symbol is known in this document
+            if sym_rec.enclosing_symbol not in symbol_map:
+                continue
+            edge_records.append(EdgeRecord(
+                src_symbol=sym_rec.enclosing_symbol,
+                dst_symbol=sym_rec.scip_symbol,
+                type=EdgeType.CONTAINS,
+                file_path=file_path,
+                line=sym_rec.def_start_line,
+            ))
+
         return IngestBatch(
             file=file_rec,
             symbols=symbol_records,
