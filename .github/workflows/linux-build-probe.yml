@@ -1,26 +1,28 @@
-name: Linux Build Probe
+name: Linux Build & Index Probe
 
 # Feasibility probe for Feature 2 (daily health metrics):
-# Verifies that a FREE GitHub-hosted runner (ubuntu-latest, 4 vCPU) can
-# pull Linux mainline and produce compile_commands.json — the prerequisite
-# for scip-clang indexing. This is the most expensive / failure-prone step
-# in the pipeline, so we de-risk it first.
+# Verifies the FULL prerequisite chain on a FREE GitHub-hosted runner:
+#   clone Linux mainline → defconfig build → compile_commands.json
+#   → scip-clang index → index.scip → kgraph parse → SQLite (kgraph.db)
 #
 # Triggered MANUALLY for now (workflow_dispatch). Once confirmed stable,
-# this becomes the build stage of the daily health workflow.
+# this becomes the build+index stage of the daily health workflow.
 #
 # What this run answers:
 #   1. Can we shallow-clone torvalds/linux on a free runner? (time/disk)
 #   2. Does `make CC="ccache clang" LLVM=1 ... compile_commands.json` succeed?
 #   3. compile_commands.json produced? size? TU count?
 #   4. ccache effectiveness? (matters for the DAILY incremental flow)
+#   5. Does scip-clang index the full defconfig, and how long / how big?
+#   6. Can kgraph ingest the index into SQLite? (symbol/edge counts)
 #
 # Notes:
-#   - Kernel compile_commands.json is DERIVED from .cmd files written during
-#     compilation, so `make compile_commands.json` still compiles every TU —
-#     it just bundles "build + run gen_compile_commands.py" into one target.
-#     It does NOT skip compilation. ccache is what makes repeat runs cheap.
-#   - scip-clang indexing is the NEXT step (bolted on once build is confirmed).
+#   - scip-clang is a Linux-x86-64 binary, so indexing MUST happen on the CI
+#     runner (it cannot run on a developer's macOS machine).
+#   - Indexing a full defconfig (~thousands of TUs) is heavy: can take 30-90+
+#     min and is memory-bound on the 16GB runner. The report captures the real
+#     cost — which is itself the key health metric. If it OOMs/timeouts, that
+#     defines the free-runner ceiling and we fall back to a subset.
 
 on:
   workflow_dispatch:
@@ -36,7 +38,7 @@ env:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 60   # safety: defconfig build ~20-30 min on 4 cores
+    timeout-minutes: 120  # safety: build ~22min + scip-clang 30-90min + ingest
 
     steps:
       - name: Checkout KGraph
@@ -108,13 +110,69 @@ jobs:
           tail -n 120 linux/build.log
           exit 1
 
-      - name: Feasibility report (build + ccache + compile_commands)
+      # ── Phase 2: scip-clang index → index.scip ──
+      # Only when the build produced compile_commands.json.
+
+      - name: Set up Python (for kgraph ingest)
+        if: success()
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install kgraph runtime deps
+        if: success()
+        run: pip install -r requirements.txt
+
+      - name: Run scip-clang → index.scip
+        id: scip
+        if: success()
+        continue-on-error: true
+        working-directory: linux
+        run: |
+          chmod +x "${{ github.workspace }}/thirdparty/scip-clang"
+          START=$(date +%s)
+          set +e
+          "${{ github.workspace }}/thirdparty/scip-clang" \
+            --compdb-path compile_commands.json > scip.log 2>&1
+          CODE=$?
+          set -e
+          END=$(date +%s)
+          echo "scip_seconds=$((END-START))" >> "$GITHUB_ENV"
+          echo "scip_exit=${CODE}" >> "$GITHUB_ENV"
+          if [ ${CODE} -ne 0 ]; then exit 1; fi
+          ls -lh index.scip
+
+      - name: Surface scip-clang log tail on failure
+        if: steps.scip.outcome == 'failure'
+        run: |
+          echo "=== last 120 lines of scip.log ==="
+          tail -n 120 linux/scip.log
+          exit 1
+
+      # ── Phase 3: kgraph ingest (parse index.scip → SQLite) ──
+      # init_cmd --skip-build runs the parser+store and prints a full summary
+      # (symbols / occurrences / edges / edge-type breakdown / db size).
+
+      - name: kgraph ingest → kgraph.db
+        id: ingest
+        if: success() && steps.scip.outcome == 'success'
+        continue-on-error: true
+        run: |
+          python3 src/cli/init_cmd.py linux --skip-build
+
+      - name: Surface ingest failure
+        if: steps.ingest.outcome == 'failure'
+        run: |
+          echo "kgraph ingest failed — see the ingest step output above"
+          exit 1
+
+      - name: Feasibility report (build + index + ingest)
         if: always()
         run: |
           echo "=============================================="
-          echo " Linux Build Probe  (ref=${{ inputs.linux_ref }}, HEAD=${HEAD_SHORT})"
+          echo " Linux Build & Index Probe  (ref=${{ inputs.linux_ref }}, HEAD=${HEAD_SHORT})"
           echo "=============================================="
-          echo "--- build outcome ---"
+          echo "--- build ---"
           echo "make compile_commands.json: ${{ steps.build.outcome }}"
           echo "--- ccache stats (this run) ---"
           ccache -s 2>/dev/null | grep -E 'cache hit|cache miss|cache size|hit rate' || true
@@ -125,15 +183,30 @@ jobs:
           else
             echo "NOT PRODUCED"
           fi
-          echo "--- disk / artifact size ---"
+          echo "--- scip-clang index ---"
+          echo "scip-clang: ${{ steps.scip.outcome }} (exit=${scip_exit:-?}, ${scip_seconds:-?}s)"
+          if [ -f linux/index.scip ]; then
+            ls -lh linux/index.scip
+          else
+            echo "index.scip NOT PRODUCED"
+          fi
+          echo "--- kgraph ingest ---"
+          echo "kgraph ingest: ${{ steps.ingest.outcome }}"
+          if [ -f linux/.kgraph/kgraph.db ]; then
+            ls -lh linux/.kgraph/kgraph.db
+          else
+            echo "kgraph.db NOT PRODUCED"
+          fi
+          echo "--- disk ---"
           df -h /
           du -sh linux 2>/dev/null || true
           echo "=============================================="
 
       - name: Upload compile_commands.json (1-day retention, for inspection)
-        if: success()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: compile_commands-${{ env.HEAD_SHORT }}
           path: linux/compile_commands.json
           retention-days: 1
+          if-no-files-found: ignore
