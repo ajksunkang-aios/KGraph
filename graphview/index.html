@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KGraph Health — Linux mainline</title>
+  <style>
+    :root {
+      --ok: #1a7f37; --bad: #cf222e; --muted: #6e7781;
+      --bg: #f6f8fa; --card: #fff; --line: #d0d7de; --head: #1f2328;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg); color: var(--head);
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 60px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: var(--muted); margin: 0 0 20px; }
+    .cards { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 22px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+            padding: 14px 16px; min-width: 150px; }
+    .card .k { color: var(--muted); font-size: 12px; text-transform: uppercase;
+               letter-spacing: .04em; }
+    .card .v { font-size: 22px; font-weight: 600; margin-top: 2px; }
+    table { width: 100%; border-collapse: collapse; background: var(--card);
+            border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    th, td { padding: 9px 12px; text-align: right; border-bottom: 1px solid var(--line);
+             white-space: nowrap; }
+    th { background: #ebeef1; font-size: 12px; text-transform: uppercase;
+        letter-spacing: .03em; color: var(--muted); }
+    th.l, td.l { text-align: left; }
+    td.r { font-variant-numeric: tabular-nums; }
+    tr:last-child td { border-bottom: none; }
+    .pill { display: inline-block; padding: 1px 8px; border-radius: 12px;
+            font-size: 12px; font-weight: 600; }
+    .pill.ok { color: var(--ok); background: #dafbe1; }
+    .pill.bad { color: var(--bad); background: #ffebe9; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .none { color: var(--muted); padding: 30px; text-align: center; }
+    .foot { color: var(--muted); font-size: 12px; margin-top: 18px; }
+    a { color: #0969da; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>KGraph Health — Linux mainline</h1>
+    <p class="sub">Buildability &amp; benchmark verifiability on torvalds/linux. Last 7 runs.</p>
+
+    <div class="cards" id="cards"></div>
+    <table>
+      <thead>
+        <tr>
+          <th class="l">When (UTC)</th>
+          <th class="l">HEAD</th>
+          <th>Buildable</th>
+          <th>Benchmark</th>
+          <th>Symbols</th>
+          <th>Edges</th>
+          <th>ops_bind</th>
+          <th>contains</th>
+          <th>DB MB</th>
+          <th>build/scip/ingest (s)</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p class="foot">
+      Source: <span class="mono">graphview/data/metrics.jsonl</span> (one line per CI run).
+      Buildable = build + scip-clang index + kgraph ingest all succeeded.
+      Benchmark = synthetic retrieval canary (M/N known-answer checks).
+    </p>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

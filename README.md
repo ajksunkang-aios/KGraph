@@ -296,6 +296,29 @@ one new `GraphStore` — the parser, MCP tools, and agent integration don't chan
 
 ---
 
+## Health Dashboard (GraphView)
+
+KGraph continuously proves it can build a **correct** index on Linux mainline — automatically,
+every day, on free GitHub Actions runners. The [`Linux Build & Index Probe`](.github/workflows/linux-build-probe.yml)
+workflow clones `torvalds/linux` master, builds `compile_commands.json` (`make CC="ccache clang" LLVM=1`),
+indexes with scip-clang, ingests into a `kgraph.db`, then runs a **synthetic retrieval canary**
+(known-answer checks: `file_operations` fields, `read_iter` ops-bind incl. `ext4`, index-scale sanity)
+and emits `metrics.json`.
+
+The last 7 runs are shown in the **GraphView** health dashboard — a dependency-free static page:
+
+```bash
+cd graphview && python3 -m http.server 8000    # then open http://localhost:8000
+```
+
+Each row is one daily run: **buildable** ✓/✗ (build + index + ingest), **benchmark** M/N (the canary),
+symbol/edge counts (incl. `ops_bind`, `contains`), and build/index/ingest timing. Data lives in
+`graphview/data/metrics.jsonl` (one line per run, auto-committed by CI). Deploy as a GitHub Pages
+site from the `graphview/` folder for a public dashboard. (Interactive SQLite graph visualization
+is planned; the dashboard today is the health 7-day list.)
+
+---
+
 ## CLI Reference
 
 ```bash
@@ -381,6 +404,11 @@ KGraph/
 │   ├── server.py                   # MCP server (12 tools)
 │   ├── source_reader.py            # reads function bodies from disk
 │   └── examples/                   # per-agent manual config snippets
+├── bench/
+│   └── health_check.py             # synthetic retrieval canary + metrics collector
+├── graphview/                      # health dashboard (static, 7-day list)
+│   ├── index.html · app.js         # dashboard UI
+│   └── data/metrics.jsonl          # one row per CI run (auto-committed)
 └── tests/
     ├── conftest.py                  # shared fixtures & synthetic SCIP benchmark
     ├── unit/                        # unit tests (pure functions, parametrized)
@@ -398,14 +426,14 @@ KGraph/
 If you're developing KGraph (not just using it as an end-user):
 
 ```bash
-git clone https://github.com/ajksunkang/KGraph.git
+git clone https://github.com/ajksunkang-aios/KGraph.git
 cd KGraph
 
 # Create venv with any python3.10+ and install dependencies
 python3.10 -m venv .venv
 source .venv/bin/activate
-pip install "protobuf>=7.35.0,<8" mcp pytest
-python -c "import google.protobuf; print(google.protobuf.__version__)"   # → 7.35.0
+pip install -r requirements-dev.txt   # runtime (requirements.txt) + pytest
+python -c "import google.protobuf; print(google.protobuf.__version__)"   # → 7.35.x
 
 # Regenerate scip_pb2.py only if you change thirdparty/scip.proto
 protoc --proto_path=thirdparty --python_out=scripts thirdparty/scip.proto
@@ -442,6 +470,6 @@ MIT
 
 _Made for kernel developers and AI agents who need to see what the compiler sees._
 
-[Report Bug](https://github.com/ajksunkang/KGraph/issues) · [Request Feature](https://github.com/ajksunkang/KGraph/issues)
+[Report Bug](https://github.com/ajksunkang-aios/KGraph/issues) · [Request Feature](https://github.com/ajksunkang-aios/KGraph/issues)
 
 </div>

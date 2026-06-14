@@ -31,6 +31,12 @@ on:
         description: 'Linux ref to build (default: master = mainline tip)'
         required: false
         default: 'master'
+  # Daily at 09:17 UTC — tracks kernel mainline HEAD drift + build/index
+  # stability over time, feeding the GraphView 7-day list. (Daily, not hourly:
+  # the kernel rarely changes hour-to-hour, and 7 daily rows = a real 7-day
+  # trend. Off-round minute avoids GitHub cron queue contention.)
+  schedule:
+    - cron: '17 9 * * *'
 
 env:
   CCACHE_DIR: /home/runner/.ccache
@@ -39,6 +45,8 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     timeout-minutes: 120  # safety: build ~22min + scip-clang 30-90min + ingest
+    permissions:
+      contents: write      # to commit graphview/data/metrics.jsonl
 
     steps:
       - name: Checkout KGraph
@@ -101,7 +109,14 @@ jobs:
           # Single target: compiles every TU (populating .cmd files, routed
           # through ccache) then runs gen_compile_commands.py. Output to a
           # log file; only the tail is surfaced on failure.
+          START=$(date +%s)
+          set +e
           make CC="ccache clang" LLVM=1 -j"$(nproc)" compile_commands.json > build.log 2>&1
+          CODE=$?
+          set -e
+          END=$(date +%s)
+          echo "build_seconds=$((END-START))" >> "$GITHUB_ENV"
+          if [ ${CODE} -ne 0 ]; then exit 1; fi
 
       - name: Surface build log tail on failure
         if: steps.build.outcome == 'failure'
@@ -158,13 +173,60 @@ jobs:
         if: success() && steps.scip.outcome == 'success'
         continue-on-error: true
         run: |
+          START=$(date +%s)
+          set +e
           python3 src/cli/init_cmd.py linux --skip-build
+          CODE=$?
+          set -e
+          END=$(date +%s)
+          echo "ingest_seconds=$((END-START))" >> "$GITHUB_ENV"
+          if [ ${CODE} -ne 0 ]; then exit 1; fi
 
       - name: Surface ingest failure
         if: steps.ingest.outcome == 'failure'
         run: |
           echo "kgraph ingest failed — see the ingest step output above"
           exit 1
+
+      # ── Phase 4: health metrics → metrics.json ──
+      # Synthetic retrieval canary + db stats → metrics.json (the GraphView
+      # contract). Also appends a one-line summary to graphview/data/metrics.jsonl.
+
+      - name: Health check → metrics.json
+        id: health
+        if: success()
+        run: |
+          python3 bench/health_check.py \
+            --db linux/.kgraph/kgraph.db \
+            --index-scip linux/index.scip \
+            --linux-ref "${{ inputs.linux_ref }}" \
+            --linux-head "${HEAD_SHORT}" \
+            --append-jsonl graphview/data/metrics.jsonl \
+            --out metrics.json
+
+      - name: Upload metrics.json (14-day artifact)
+        if: always() && steps.health.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrics-${{ env.HEAD_SHORT }}
+          path: metrics.json
+          retention-days: 14
+          if-no-files-found: ignore
+
+      # Commit the appended metrics.jsonl so the static GraphView dashboard
+      # (reading graphview/data/metrics.jsonl) shows run history.
+      # continue-on-error: a commit/push failure (protected branch, HEAD race)
+      # must not fail the run — metrics.json artifact is already uploaded.
+      - name: Publish metrics.jsonl to GraphView data
+        if: success()
+        continue-on-error: true
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add graphview/data/metrics.jsonl
+          git commit -m "chore(graphview): health metrics for ${HEAD_SHORT}" \
+            || echo "nothing to commit"
+          git push
 
       - name: Feasibility report (build + index + ingest)
         if: always()

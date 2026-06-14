@@ -286,6 +286,27 @@ socket_file_ops         → sock_read_iter        @ net/socket.c
 
 ---
 
+## 健康看板（GraphView）
+
+KGraph 每天在**免费的 GitHub Actions runner** 上自动证明:它能在 Linux 主线上构建出**正确**的索引。
+[`Linux Build & Index Probe`](.github/workflows/linux-build-probe.yml) 工作流会拉取 `torvalds/linux`
+master、构建 `compile_commands.json`（`make CC="ccache clang" LLVM=1`）、用 scip-clang 索引、灌入 `kgraph.db`，
+然后跑一个**合成检索金丝雀**（已知答案的检查:`file_operations` 字段、`read_iter` 的 ops-bind 含 ext4、
+索引规模 sanity）并产出 `metrics.json`。
+
+最近 7 次 run 展示在 **GraphView** 健康看板里——一个零依赖的静态页:
+
+```bash
+cd graphview && python3 -m http.server 8000    # 然后浏览器打开 http://localhost:8000
+```
+
+每行 = 一次每日 run:**可构建性** ✓/✗（build + index + ingest）、**benchmark** M/N（金丝雀）、
+符号/边计数（含 `ops_bind`、`contains`）、以及 build/index/ingest 耗时。数据存在
+`graphview/data/metrics.jsonl`（每次 run 一行,由 CI 自动提交）。把 `graphview/` 目录部署成
+GitHub Pages 站点即可获得公开看板。（交互式 SQLite 图谱可视化后续再做;今天的看板是健康 7-day list。）
+
+---
+
 ## CLI 参考
 
 ```bash
@@ -370,6 +391,11 @@ KGraph/
 │   ├── server.py                   # MCP 服务端（12 个工具）
 │   ├── source_reader.py            # 从磁盘读函数体
 │   └── examples/                   # 各 agent 手动配置示例
+├── bench/
+│   └── health_check.py             # 合成检索金丝雀 + metrics 收集
+├── graphview/                      # 健康看板（静态,7-day list）
+│   ├── index.html · app.js         # 看板 UI
+│   └── data/metrics.jsonl          # 每次 CI run 一行（自动提交）
 └── tests/
     ├── conftest.py                  # 共享 fixture 与合成 SCIP benchmark
     ├── unit/                        # 单元测试（纯函数，参数化）
@@ -387,14 +413,14 @@ KGraph/
 如果你在开发 KGraph（不仅是作为用户使用）：
 
 ```bash
-git clone https://github.com/ajksunkang/KGraph.git
+git clone https://github.com/ajksunkang-aios/KGraph.git
 cd KGraph
 
 # 用任何 python3.10+ 建 venv 并安装依赖
 python3.10 -m venv .venv
 source .venv/bin/activate
-pip install "protobuf>=7.35.0,<8" mcp pytest
-python -c "import google.protobuf; print(google.protobuf.__version__)"   # → 7.35.0
+pip install -r requirements-dev.txt   # 运行时(requirements.txt)+ pytest
+python -c "import google.protobuf; print(google.protobuf.__version__)"   # → 7.35.x
 
 # 仅当修改 thirdparty/scip.proto 时才需重新生成 scip_pb2.py
 protoc --proto_path=thirdparty --python_out=scripts thirdparty/scip.proto
@@ -431,6 +457,6 @@ MIT
 
 _为内核开发者和 AI agent 而做——看见编译器看到的真相。_
 
-[报告问题](https://github.com/ajksunkang/KGraph/issues) · [功能建议](https://github.com/ajksunkang/KGraph/issues)
+[报告问题](https://github.com/ajksunkang-aios/KGraph/issues) · [功能建议](https://github.com/ajksunkang-aios/KGraph/issues)
 
 </div>
