@@ -91,14 +91,18 @@ case "$CMD" in
     # MCP stdio server (used by AI agents via MCP protocol)
     exec "$PYTHON" "$DIR/lib/kgraph/mcp/server.py" "$@"
     ;;
-  init|ingest|status)
-    # Index lifecycle commands (TODO: implement kgraph CLI)
+  init)
+    # Build code graph: scip-clang -> parse index.scip -> SQLite
+    exec "$PYTHON" "$DIR/lib/kgraph/src/cli/init_cmd.py" "$@"
+    ;;
+  ingest|status)
+    # Reserved for future index lifecycle commands
     echo "kgraph: '$CMD' is not yet implemented. See https://github.com/ajksunkang/KGraph/issues"
     exit 1
     ;;
   *)
     echo "kgraph: unknown command '$CMD'"
-    echo "Usage: kgraph {install|detect|uninstall|serve} [options]"
+    echo "Usage: kgraph {install|detect|uninstall|init|serve} [options]"
     exit 1
     ;;
 esac
@@ -107,12 +111,12 @@ chmod +x "${BUNDLE_DIR}/bin/kgraph-launcher"
 
 # ── 5. Copy scip-clang (if available) ──
 echo "[5/5] Copying scip-clang..."
-if [ -f "${PROJECT_ROOT}/scip-tools/scip-clang" ]; then
-  cp "${PROJECT_ROOT}/scip-tools/scip-clang" "${BUNDLE_DIR}/bin/"
+if [ -f "${PROJECT_ROOT}/thirdparty/scip-clang" ]; then
+  cp "${PROJECT_ROOT}/thirdparty/scip-clang" "${BUNDLE_DIR}/bin/"
   chmod +x "${BUNDLE_DIR}/bin/scip-clang"
   echo "  scip-clang bundled."
 else
-  echo "  WARNING: scip-tools/scip-clang not found — bundle won't include it."
+  echo "  WARNING: thirdparty/scip-clang not found — bundle won't include it."
   echo "  Users will need to install scip-clang separately."
 fi
 
