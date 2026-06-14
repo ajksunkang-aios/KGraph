@@ -2,14 +2,21 @@
 KGraph — SCIP Symbol Name Parser
 
 SCIP uses a structured string format for global symbols:
-    <scheme> ' ' <package> ' ' <descriptor>+
+    <scheme> ' ' <manager> ' ' <name> ' ' <version> ' ' <descriptor>+
 
-Example: "scip clang c linux v6.12 ext4_file_operations#read_iter()."
+The four leading fields are always present (sentinel "." / "$" when empty),
+followed by the descriptor grammar. Spaces inside descriptor names are escaped
+as double-space.
+
+Real scip-clang emits, e.g.:
+    "cxx . . $ file_operations#read_iter."
+    "cxx . . $ file_operations#"
+    "cxx . . $ ext4_file_read_iter()."
 
 Descriptor suffixes determine kind:
     / → Namespace/Module
     # → Type (struct/class)
-    . → Term (variable/field)
+    . → Term (variable/field — refined to Field when parent is a Type)
     (). → Method
     (disambiguator). → Method with disambiguation
     ! → Macro
@@ -79,15 +86,25 @@ def parse_scip_symbol(symbol_str: str) -> dict:
             "enclosing_symbol": "",
         }
 
-    # Split: scheme <space> package <space> descriptors_string
-    # SCIP format: double-space escapes literal spaces in names.
-    # We use a simple split on the first two single-space boundaries.
-    parts = symbol_str.split(" ", 2)
-    if len(parts) < 3:
-        # Malformed — might be just scheme+package without descriptors
+    # Split the canonical SCIP header from the descriptor grammar.
+    #
+    # Canonical format (per the SCIP spec, and as emitted by real scip-clang):
+    #     <scheme> <manager> <name> <version> <descriptor>+
+    # The four leading fields are always present (sentinel "." / "$" when
+    # empty), followed by the descriptor grammar. Spaces inside descriptor
+    # names are escaped as double-space, so splitting the header on single
+    # spaces is safe — the package fields are identifiers/sentinels and never
+    # contain unescaped spaces.
+    #
+    # Real scip-clang emits e.g. "cxx . . $ file_operations#read_iter."
+    # (scheme=cxx, manager=., name=., version=$). Splitting on the first four
+    # single-spaces yields the correct descriptor tail "file_operations#read_iter.".
+    parts = symbol_str.split(" ", 4)
+    if len(parts) < 5:
+        # Malformed / truncated header (fewer than 4 leading fields + descriptors)
         return {
             "scheme": parts[0] if len(parts) > 0 else "",
-            "package": parts[1] if len(parts) > 1 else "",
+            "package": " ".join(parts[1:]) if len(parts) > 1 else "",
             "descriptors": [],
             "short_name": "",
             "kind": SymbolKind.GLOBAL_VAR,
@@ -95,8 +112,8 @@ def parse_scip_symbol(symbol_str: str) -> dict:
         }
 
     scheme = parts[0]
-    package = parts[1]
-    descriptors_str = parts[2]
+    package = " ".join(parts[1:4])  # manager + name + version
+    descriptors_str = parts[4]
 
     # Parse descriptors by walking the string and identifying suffix characters
     descriptors = _parse_descriptors(descriptors_str)

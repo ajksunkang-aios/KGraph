@@ -452,6 +452,34 @@ class SCIPParser:
                 line=sym_rec.def_start_line,
             ))
 
+        # ── Step 7: Derive contains edges from field Definition occurrences ──
+        # Complements Step 6 for real scip-clang output: it leaves
+        # SymbolInformation.enclosing_symbol empty for non-local symbols (per
+        # the SCIP spec, enclosing_symbol is only populated for local symbols).
+        # Struct fields are non-local, so their containment must be recovered
+        # positionally — a field's Definition occurrence sits inside its
+        # enclosing struct's body range. We reuse the same range-matching
+        # already used for call/ops_bind derivation (definition_ranges +
+        # _find_enclosing_symbol). Edges are deduplicated by the store via
+        # INSERT OR IGNORE on the (src, dst, type, file, line) composite key.
+        for occ_rec in occurrence_records:
+            if not (occ_rec.role & SymbolRole.DEFINITION):
+                continue
+            # Only Definition occurrences of fields contribute struct containment.
+            if _get_symbol_kind(occ_rec.symbol, symbol_map) != SymbolKind.FIELD:
+                continue
+            enclosing = self._find_enclosing_symbol(
+                occ_rec.start_line, occ_rec.start_col, definition_ranges,
+            )
+            if enclosing and enclosing != occ_rec.symbol:
+                edge_records.append(EdgeRecord(
+                    src_symbol=enclosing,
+                    dst_symbol=occ_rec.symbol,
+                    type=EdgeType.CONTAINS,
+                    file_path=file_path,
+                    line=occ_rec.start_line,
+                ))
+
         return IngestBatch(
             file=file_rec,
             symbols=symbol_records,
@@ -471,14 +499,15 @@ class SCIPParser:
         if kind is None:
             kind = parsed.get("kind", DEFAULT_SYMBOL_KIND)
 
-        # Refine: if descriptor says "." (Term) and this is inside a struct,
-        # treat as Field rather than global_var
-        if kind == SymbolKind.GLOBAL_VAR and parsed.get("descriptors"):
-            for desc in parsed["descriptors"]:
-                if desc["suffix"] == "#" and desc["kind"] == SymbolKind.STRUCT:
-                    # This symbol is inside a struct — it's a field
-                    kind = SymbolKind.FIELD
-                    break
+        # Refine: a Term ('.') whose direct parent descriptor is a Type ('#')
+        # is a struct field, not a global variable. This matters for real
+        # scip-clang output, where SymbolInformation.kind is left as
+        # UnspecifiedKind (0) and the kind must come from the descriptor grammar
+        # (e.g. "cxx . . $ file_operations#read_iter." → Field).
+        if kind == SymbolKind.GLOBAL_VAR and len(parsed.get("descriptors", [])) >= 2:
+            parent_desc = parsed["descriptors"][-2]
+            if parent_desc["suffix"] == "#":
+                kind = SymbolKind.FIELD
 
         # Name: prefer display_name, fallback to parsed short_name
         name = sym_info.display_name or parsed.get("short_name", "")

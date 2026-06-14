@@ -49,9 +49,7 @@ chmod +x "${BUNDLE_DIR}/python"
 echo "[2/5] Installing Python dependencies..."
 "${BUNDLE_DIR}/python" -m pip install --target "${BUNDLE_DIR}/lib/site-packages" \
   --no-cache-dir --no-compile \
-  "protobuf>=7.35.0,<8" \
-  mcp \
-  trio
+  -r "${PROJECT_ROOT}/requirements.txt"
 
 # ── 3. Copy KGraph source ──
 echo "[3/5] Copying KGraph source..."

@@ -1,0 +1,8 @@
+# Development / test dependencies.
+#
+# Adds the test runner on top of the runtime set. Used by:
+#   - .github/workflows/auto-test.yml   (CI on every push/PR)
+#   - .github/workflows/release.yml     (pre-release test gate)
+#   - local dev:  pip install -r requirements-dev.txt
+-r requirements.txt
+pytest

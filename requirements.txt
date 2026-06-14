@@ -1,0 +1,16 @@
+# KGraph runtime dependencies.
+#
+# Single source of truth for what `kgraph init` and `kgraph serve` need.
+# Consumed by:
+#   - scripts/build-bundle.sh   (bundles these into the npm platform package)
+#   - tests / local dev          (via requirements-dev.txt)
+#
+# protobuf: scip_pb2 (generated SCIP bindings) require a 7.x runtime that is
+#           not older than the gencode version the bindings were built against.
+# mcp:      the MCP stdio server (kgraph serve) and its tool surface.
+# trio:     retained from the launcher-routing fix; mcp's async backend is
+#           anyio (not trio), so this is likely redundant — left in to preserve
+#           current bundle behavior pending Linux verification of `serve`.
+protobuf>=7.35.0,<8
+mcp
+trio

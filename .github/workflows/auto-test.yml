@@ -26,8 +26,7 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install --upgrade pip setuptools
-          .venv/bin/pip install "protobuf>=7.35.0,<8"
-          .venv/bin/pip install mcp pytest
+          .venv/bin/pip install -r requirements-dev.txt
           .venv/bin/python -c "import google.protobuf; print('protobuf:', google.protobuf.__version__)"
 
       - name: Run tests
