@@ -1,0 +1,139 @@
+name: Linux Build Probe
+
+# Feasibility probe for Feature 2 (daily health metrics):
+# Verifies that a FREE GitHub-hosted runner (ubuntu-latest, 4 vCPU) can
+# pull Linux mainline and produce compile_commands.json — the prerequisite
+# for scip-clang indexing. This is the most expensive / failure-prone step
+# in the pipeline, so we de-risk it first.
+#
+# Triggered MANUALLY for now (workflow_dispatch). Once confirmed stable,
+# this becomes the build stage of the daily health workflow.
+#
+# What this run answers:
+#   1. Can we shallow-clone torvalds/linux on a free runner? (time/disk)
+#   2. Does `make CC="ccache clang" LLVM=1 ... compile_commands.json` succeed?
+#   3. compile_commands.json produced? size? TU count?
+#   4. ccache effectiveness? (matters for the DAILY incremental flow)
+#
+# Notes:
+#   - Kernel compile_commands.json is DERIVED from .cmd files written during
+#     compilation, so `make compile_commands.json` still compiles every TU —
+#     it just bundles "build + run gen_compile_commands.py" into one target.
+#     It does NOT skip compilation. ccache is what makes repeat runs cheap.
+#   - scip-clang indexing is the NEXT step (bolted on once build is confirmed).
+
+on:
+  workflow_dispatch:
+    inputs:
+      linux_ref:
+        description: 'Linux ref to build (default: master = mainline tip)'
+        required: false
+        default: 'master'
+
+env:
+  CCACHE_DIR: /home/runner/.ccache
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60   # safety: defconfig build ~20-30 min on 4 cores
+
+    steps:
+      - name: Checkout KGraph
+        uses: actions/checkout@v4
+
+      - name: Baseline (CPU / disk)
+        run: |
+          echo "nproc: $(nproc)"
+          echo "mem:  $(free -h | awk '/^Mem:/ {print $2}')"
+          df -h /
+
+      - name: Install build toolchain + ccache
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang lld llvm build-essential ccache \
+            bc bison flex libelf-dev libssl-dev libncurses-dev \
+            cpio dwarves
+          clang --version | head -1
+          ccache --version | head -1
+
+      - name: Clone Linux mainline (shallow)
+        run: |
+          REF="${{ inputs.linux_ref }}"
+          # torvalds/linux uses 'master' as its default branch (= mainline tip).
+          git clone --depth 1 --branch "${REF}" https://github.com/torvalds/linux.git linux
+          cd linux
+          echo "HEAD: $(git rev-parse HEAD)  ($(git log -1 --format='%ci'))"
+          echo "HEAD_SHORT=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+
+      # ccache restore: keyed per-commit, but restore-keys falls back to the
+      # most recent prior cache. ccache content-hashes each TU, so unchanged
+      # files hit even across commits — this is what makes daily runs cheap.
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key:  ccache-linux-${{ env.HEAD_SHORT }}
+          restore-keys: |
+            ccache-linux-
+
+      - name: Configure ccache
+        run: |
+          mkdir -p "$CCACHE_DIR"
+          ccache --set-config=max_size=4G
+          ccache --set-config=compression=true
+          ccache -z   # zero stats for this run
+
+      - name: defconfig
+        run: |
+          cd linux
+          make CC="ccache clang" LLVM=1 defconfig
+          grep -E 'CONFIG_(X86_64|DEBUG_INFO_BTF|MODULES)=' .config || true
+
+      - name: Build + generate compile_commands.json
+        id: build
+        continue-on-error: true
+        run: |
+          cd linux
+          # Single target: compiles every TU (populating .cmd files, routed
+          # through ccache) then runs gen_compile_commands.py. Output to a
+          # log file; only the tail is surfaced on failure.
+          make CC="ccache clang" LLVM=1 -j"$(nproc)" compile_commands.json > build.log 2>&1
+
+      - name: Surface build log tail on failure
+        if: steps.build.outcome == 'failure'
+        run: |
+          echo "=== last 120 lines of build.log ==="
+          tail -n 120 linux/build.log
+          exit 1
+
+      - name: Feasibility report (build + ccache + compile_commands)
+        if: always()
+        run: |
+          echo "=============================================="
+          echo " Linux Build Probe  (ref=${{ inputs.linux_ref }}, HEAD=${HEAD_SHORT})"
+          echo "=============================================="
+          echo "--- build outcome ---"
+          echo "make compile_commands.json: ${{ steps.build.outcome }}"
+          echo "--- ccache stats (this run) ---"
+          ccache -s 2>/dev/null | grep -E 'cache hit|cache miss|cache size|hit rate' || true
+          echo "--- compile_commands.json ---"
+          if [ -f linux/compile_commands.json ]; then
+            ls -lh linux/compile_commands.json
+            python3 -c "import json; d=json.load(open('linux/compile_commands.json')); print('entries:', len(d))"
+          else
+            echo "NOT PRODUCED"
+          fi
+          echo "--- disk / artifact size ---"
+          df -h /
+          du -sh linux 2>/dev/null || true
+          echo "=============================================="
+
+      - name: Upload compile_commands.json (1-day retention, for inspection)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compile_commands-${{ env.HEAD_SHORT }}
+          path: linux/compile_commands.json
+          retention-days: 1
