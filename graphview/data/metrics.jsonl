@@ -1,1 +1,2 @@
 {"ts":"2026-06-14T07:30:00+00:00","head":"e21ee273e","ref":"master","buildable":true,"benchmark_pass":7,"benchmark_total":7,"benchmark_ok":true,"symbols":485225,"edges":9195510,"ops_bind":8237,"contains":110902,"db_mb":512.5,"build_s":1320,"scip_s":665,"ingest_s":881}
+{"ts": "2026-06-15T02:32:35+00:00", "head": "424280953", "ref": "master", "buildable": true, "benchmark_pass": 7, "benchmark_total": 7, "benchmark_ok": true, "symbols": 478434, "edges": 858938, "ops_bind": 8252, "contains": 110266, "db_mb": 511.5, "build_s": 32.0, "scip_s": 854.0, "ingest_s": 1112.0}
