@@ -1,0 +1,60 @@
+name: Deploy GraphView (Pages)
+
+# Publishes the static graphview/ health dashboard to GitHub Pages.
+# Source for the site is the graphview/ directory on main (which the daily
+# Linux Build & Index Probe keeps up to date by committing metrics.jsonl).
+#
+# Triggers:
+#   - push to main under graphview/**   (human edits to dashboard source)
+#   - workflow_run after the probe        (fresh metrics.jsonl committed by CI)
+#   - workflow_dispatch                   (manual)
+#
+# Note: GITHUB_TOKEN commits don't fire `push` events for other workflows,
+# so we also use workflow_run to redeploy after each probe run.
+
+on:
+  push:
+    branches: [main]
+    paths: ['graphview/**']
+  workflow_run:
+    workflows: ["Linux Build & Index Probe"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write   # required by actions/deploy-pages
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    # For workflow_run triggers, only redeploy after a SUCCESSFUL probe
+    # (a failed probe commits nothing new — no point redeploying).
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      # Upload the contents of graphview/ as the site root:
+      #   graphview/index.html      ->  /index.html
+      #   graphview/app.js          ->  /app.js
+      #   graphview/data/metrics.jsonl -> /data/metrics.jsonl  (fetched by app.js)
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: graphview
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
