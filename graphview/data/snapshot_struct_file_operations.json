@@ -1,5 +1,244 @@
 {
   "struct_symbol": "cxx . . $ file_operations#",
   "struct_name": "file_operations",
-  "fields": []
+  "fields": [
+    {
+      "scip_symbol": "cxx . . $ file_operations#owner.",
+      "name": "owner",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1926
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#fop_flags.",
+      "name": "fop_flags",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1927
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#llseek.",
+      "name": "llseek",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1928
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#read.",
+      "name": "read",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1929
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#write.",
+      "name": "write",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1930
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#read_iter.",
+      "name": "read_iter",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1931
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#write_iter.",
+      "name": "write_iter",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1932
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#iopoll.",
+      "name": "iopoll",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1933
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#iterate_shared.",
+      "name": "iterate_shared",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1935
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#poll.",
+      "name": "poll",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1936
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#unlocked_ioctl.",
+      "name": "unlocked_ioctl",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1937
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#compat_ioctl.",
+      "name": "compat_ioctl",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1938
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#mmap.",
+      "name": "mmap",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1939
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#open.",
+      "name": "open",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1940
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#flush.",
+      "name": "flush",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1941
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#release.",
+      "name": "release",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1942
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#fsync.",
+      "name": "fsync",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1943
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#fasync.",
+      "name": "fasync",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1944
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#lock.",
+      "name": "lock",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1945
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#get_unmapped_area.",
+      "name": "get_unmapped_area",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1946
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#check_flags.",
+      "name": "check_flags",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1947
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#flock.",
+      "name": "flock",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1948
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#splice_write.",
+      "name": "splice_write",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1949
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#splice_read.",
+      "name": "splice_read",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1950
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#splice_eof.",
+      "name": "splice_eof",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1951
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#setlease.",
+      "name": "setlease",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1952
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#fallocate.",
+      "name": "fallocate",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1953
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#show_fdinfo.",
+      "name": "show_fdinfo",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1955
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#copy_file_range.",
+      "name": "copy_file_range",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1959
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#remap_file_range.",
+      "name": "remap_file_range",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1961
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#fadvise.",
+      "name": "fadvise",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1964
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#uring_cmd.",
+      "name": "uring_cmd",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1965
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#uring_cmd_iopoll.",
+      "name": "uring_cmd_iopoll",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1966
+    },
+    {
+      "scip_symbol": "cxx . . $ file_operations#mmap_prepare.",
+      "name": "mmap_prepare",
+      "kind": "field",
+      "signature": "",
+      "def_start_line": 1968
+    }
+  ]
 }

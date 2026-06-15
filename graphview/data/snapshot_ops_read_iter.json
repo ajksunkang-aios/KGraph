@@ -95,7 +95,7 @@
     "ops_symbol": "cxx . . $ kernfs_file_fops.",
     "impl_symbol": "cxx . . $ kernfs_fop_read_iter(c5f3e27501c4297d).",
     "file_path": "fs/kernfs/file.c",
-    "line": 1015,
+    "line": 1008,
     "field_name": "kernfs_fop_read_iter",
     "confidence": 0.5
   },
@@ -125,7 +125,7 @@
     "ops_symbol": "cxx . . $ timerfd_fops.",
     "impl_symbol": "cxx . . $ timerfd_read_iter(c5f3e27501c4297d).",
     "file_path": "fs/timerfd.c",
-    "line": 387,
+    "line": 417,
     "field_name": "timerfd_read_iter",
     "confidence": 0.5
   },
@@ -145,7 +145,7 @@
     "ops_symbol": "cxx . . $ shmem_file_operations.",
     "impl_symbol": "cxx . . $ shmem_file_read_iter(c5f3e27501c4297d).",
     "file_path": "mm/shmem.c",
-    "line": 5222,
+    "line": 5206,
     "field_name": "shmem_file_read_iter",
     "confidence": 0.5
   },
@@ -157,106 +157,6 @@
     "file_path": "net/socket.c",
     "line": 158,
     "field_name": "sock_read_iter",
-    "confidence": 0.5
-  },
-  {
-    "ops_name": "fat_file_operations",
-    "impl_name": "generic_file_read_iter",
-    "ops_symbol": "cxx . . $ fat_file_operations.",
-    "impl_symbol": "cxx . . $ generic_file_read_iter(c5f3e27501c4297d).",
-    "file_path": "fs/fat/file.c",
-    "line": 206,
-    "field_name": "generic_file_read_iter",
-    "confidence": 0.5
-  },
-  {
-    "ops_name": "cpuinfo_proc_ops",
-    "impl_name": "seq_read_iter",
-    "ops_symbol": "cxx . . $ cpuinfo_proc_ops.",
-    "impl_symbol": "cxx . . $ seq_read_iter(c5f3e27501c4297d).",
-    "file_path": "fs/proc/cpuinfo.c",
-    "line": 17,
-    "field_name": "seq_read_iter",
-    "confidence": 0.5
-  },
-  {
-    "ops_name": "proc_seq_ops",
-    "impl_name": "seq_read_iter",
-    "ops_symbol": "cxx . . $ proc_seq_ops.",
-    "impl_symbol": "cxx . . $ seq_read_iter(c5f3e27501c4297d).",
-    "file_path": "fs/proc/generic.c",
-    "line": 628,
-    "field_name": "seq_read_iter",
-    "confidence": 0.5
-  },
-  {
-    "ops_name": "proc_single_ops",
-    "impl_name": "seq_read_iter",
-    "ops_symbol": "cxx . . $ proc_single_ops.",
-    "impl_symbol": "cxx . . $ seq_read_iter(c5f3e27501c4297d).",
-    "file_path": "fs/proc/generic.c",
-    "line": 659,
-    "field_name": "seq_read_iter",
-    "confidence": 0.5
-  },
-  {
-    "ops_name": "stat_proc_ops",
-    "impl_name": "seq_read_iter",
-    "ops_symbol": "cxx . . $ stat_proc_ops.",
-    "impl_symbol": "cxx . . $ seq_read_iter(c5f3e27501c4297d).",
-    "file_path": "fs/proc/stat.c",
-    "line": 205,
-    "field_name": "seq_read_iter",
-    "confidence": 0.5
-  },
-  {
-    "ops_name": "proc_mounts_operations",
-    "impl_name": "seq_read_iter",
-    "ops_symbol": "cxx . . $ proc_mounts_operations.",
-    "impl_symbol": "cxx . . $ seq_read_iter(c5f3e27501c4297d).",
-    "file_path": "fs/proc_namespace.c",
-    "line": 314,
-    "field_name": "seq_read_iter",
-    "confidence": 0.5
-  },
-  {
-    "ops_name": "proc_mountinfo_operations",
-    "impl_name": "seq_read_iter",
-    "ops_symbol": "cxx . . $ proc_mountinfo_operations.",
-    "impl_symbol": "cxx . . $ seq_read_iter(c5f3e27501c4297d).",
-    "file_path": "fs/proc_namespace.c",
-    "line": 323,
-    "field_name": "seq_read_iter",
-    "confidence": 0.5
-  },
-  {
-    "ops_name": "proc_mountstats_operations",
-    "impl_name": "seq_read_iter",
-    "ops_symbol": "cxx . . $ proc_mountstats_operations.",
-    "impl_symbol": "cxx . . $ seq_read_iter(c5f3e27501c4297d).",
-    "file_path": "fs/proc_namespace.c",
-    "line": 332,
-    "field_name": "seq_read_iter",
-    "confidence": 0.5
-  },
-  {
-    "ops_name": "ramfs_file_operations",
-    "impl_name": "generic_file_read_iter",
-    "ops_symbol": "cxx . . $ ramfs_file_operations.",
-    "impl_symbol": "cxx . . $ generic_file_read_iter(c5f3e27501c4297d).",
-    "file_path": "fs/ramfs/file-mmu.c",
-    "line": 41,
-    "field_name": "generic_file_read_iter",
-    "confidence": 0.5
-  },
-  {
-    "ops_name": "generic_ro_fops",
-    "impl_name": "generic_file_read_iter",
-    "ops_symbol": "cxx . . $ generic_ro_fops.",
-    "impl_symbol": "cxx . . $ generic_file_read_iter(c5f3e27501c4297d).",
-    "file_path": "fs/read_write.c",
-    "line": 30,
-    "field_name": "generic_file_read_iter",
     "confidence": 0.5
   }
 ]

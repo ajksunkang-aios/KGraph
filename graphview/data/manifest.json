@@ -4,7 +4,7 @@
     "title": "read_iter ops table \u2014 VFS indirect-call impls",
     "view": "ops",
     "file": "data/snapshot_ops_read_iter.json",
-    "count": 26
+    "count": 16
   },
   {
     "key": "callchain_vfs_read",
@@ -18,7 +18,7 @@
     "title": "struct file_operations layout",
     "view": "struct",
     "file": "data/snapshot_struct_file_operations.json",
-    "count": 0
+    "count": 34
   },
   {
     "key": "body_vfs_read",
