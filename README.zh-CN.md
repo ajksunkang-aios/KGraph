@@ -200,7 +200,7 @@ python -c "import google.protobuf; print(google.protobuf.__version__)"   # → 7
 
 ## MCP 工具集
 
-KGraph 暴露 **12 个工具**——覆盖大部分 agent 代码索引诉求的最小可行集。
+KGraph 暴露 **13 个工具**——覆盖大部分 agent 代码索引诉求的最小可行集。
 每个工具都是配置感知、编译器解析的。
 
 ### 符号查找
@@ -218,6 +218,7 @@ KGraph 暴露 **12 个工具**——覆盖大部分 agent 代码索引诉求的�
 | `find_callers(name)` | 谁调用了这个函数——**含 `ops_bind`** | `depth, limit` |
 | `find_callees(name)` | 这个函数调用了谁——**含 `ops_bind`** | `depth, limit` |
 | `call_path(source, target)` | 两函数间的调用路径 | `max_len` |
+| `get_callchain(name)` | 从函数**往上追到根**(syscall/入口)的调用链,含 `ops_bind` | `max_depth` |
 | `find_references(name)` | 符号的每个使用点，带所在函数 | `limit` |
 
 ### 类型与结构
@@ -263,10 +264,10 @@ socket_file_ops         → sock_read_iter        @ net/socket.c
                                   │
                                   ▼
 ┌───────────────────────────────────────────────────────────────┐
-│                  KGraph MCP 服务端（12 个工具）                 │
+│                  KGraph MCP 服务端（13 个工具）                 │
 │  search · get_symbol · get_function_body · callers · callees   │
-│  call_path · references · type_definition · struct_layout      │
-│  neighborhood · ops_impls · index_status                       │
+│  call_path · callchain · references · type_definition          │
+│  struct_layout · neighborhood · ops_impls · index_status       │
 │                                  │                             │
 │                                  ▼                             │
 │              SQLite 知识图谱 (.kgraph/kgraph.db)              │
@@ -286,24 +287,26 @@ socket_file_ops         → sock_read_iter        @ net/socket.c
 
 ---
 
-## 健康看板（GraphView）
+## GraphView — 健康看板 + 交互式探索器
 
-KGraph 每天在**免费的 GitHub Actions runner** 上自动证明:它能在 Linux 主线上构建出**正确**的索引。
-[`Linux Build & Index Probe`](.github/workflows/linux-build-probe.yml) 工作流会拉取 `torvalds/linux`
-master、构建 `compile_commands.json`（`make CC="ccache clang" LLVM=1`）、用 scip-clang 索引、灌入 `kgraph.db`，
-然后跑一个**合成检索金丝雀**（已知答案的检查:`file_operations` 字段、`read_iter` 的 ops-bind 含 ext4、
-索引规模 sanity）并产出 `metrics.json`。
+GraphView 在 `graphview/` 目录下有两面:
 
-最近 7 次 run 展示在 **GraphView** 健康看板里——一个零依赖的静态页:
+**健康看板** —— KGraph 每天在**免费 GitHub Actions runner** 上自动证明能在 Linux 主线构建出**正确**的索引。
+[`Linux Build & Index Probe`](.github/workflows/linux-build-probe.yml) 拉取 `torvalds/linux`、构建+索引+灌库、
+跑**合成检索金丝雀**、产出 `metrics.json`。最近 7 次 run 渲染成零依赖的静态 7-day list(可构建性 ✓/✗、
+金丝雀 M/N、符号/边计数、耗时),由 [`deploy-graphview.yml`](.github/workflows/deploy-graphview.yml) 发布到 GitHub Pages。
+
+**交互式探索器**(`kgraph view`)—— 本地只读 HTTP server(stdlib,零新依赖),在你自己的 `kgraph.db` 上
+服务代码图谱:搜索 → 居中符号 → 探索 caller/callee/邻域;解析 **ops 表**(`read_iter` → 所有实现);
+或追**调用链**上溯到 syscall 根。同源(server 同时提供页面和 API → 无 CORS)。
 
 ```bash
-cd graphview && python3 -m http.server 8000    # 然后浏览器打开 http://localhost:8000
+kgraph view                       # 或:python view/server.py --db <kgraph.db> --root <linux>
+# → http://localhost:8000/graph.html   (健康看板:http://localhost:8000/)
 ```
 
-每行 = 一次每日 run:**可构建性** ✓/✗（build + index + ingest）、**benchmark** M/N（金丝雀）、
-符号/边计数（含 `ops_bind`、`contains`）、以及 build/index/ingest 耗时。数据存在
-`graphview/data/metrics.jsonl`（每次 run 一行,由 CI 自动提交）。把 `graphview/` 目录部署成
-GitHub Pages 站点即可获得公开看板。（交互式 SQLite 图谱可视化后续再做;今天的看板是健康 7-day list。）
+探索器三个视图:**邻域**(Cytoscape.js 图谱)、**ops 表**、**调用链**。
+(Pages 上的只读预烘焙子图 demo 是后续计划;本地探索器已上线。)
 
 ---
 
@@ -321,6 +324,7 @@ kgraph uninstall                   # 从 agent 移除 kgraph 配置
 kgraph init <path>                 # 索引 + 灌库（--skip-build, --subsystem, --force）
 kgraph ingest <path>               # 从已有 index.scip 重新灌库
 kgraph serve --mcp                 # 启动 MCP 服务端（通常由 agent 自动拉起）
+kgraph view                        # 本地交互式图谱探索器（HTTP + 浏览器 UI）
 kgraph status <path>               # 查看索引统计与健康
 ```
 
@@ -388,13 +392,16 @@ KGraph/
 │       ├── cli.py                  #   `kgraph install` CLI
 │       └── targets/                #   claude · cursor · codex · opencode · hermes
 ├── mcp/
-│   ├── server.py                   # MCP 服务端（12 个工具）
+│   ├── server.py                   # MCP 服务端（13 个工具）
 │   ├── source_reader.py            # 从磁盘读函数体
 │   └── examples/                   # 各 agent 手动配置示例
+├── view/
+│   └── server.py                   # `kgraph view` — 本地探索器（HTTP API + 静态）
 ├── bench/
 │   └── health_check.py             # 合成检索金丝雀 + metrics 收集
-├── graphview/                      # 健康看板（静态,7-day list）
-│   ├── index.html · app.js         # 看板 UI
+├── graphview/                      # 健康看板 + 交互式探索器
+│   ├── index.html · app.js         # 健康 7-day list
+│   ├── graph.html · graph.js       # 探索器（邻域 · ops 表 · 调用链）
 │   └── data/metrics.jsonl          # 每次 CI run 一行（自动提交）
 └── tests/
     ├── conftest.py                  # 共享 fixture 与合成 SCIP benchmark

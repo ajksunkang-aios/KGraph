@@ -206,7 +206,7 @@ questions and it queries the graph instead of grepping:
 
 ## MCP Tools
 
-KGraph exposes **12 tools** — a minimal viable set covering the most common agent
+KGraph exposes **13 tools** — a minimal viable set covering the most common agent
 code-indexing needs. Every tool is config-aware and compiler-resolved.
 
 ### Symbol lookup
@@ -224,6 +224,7 @@ code-indexing needs. Every tool is config-aware and compiler-resolved.
 | `find_callers(name)` | Who calls this function — **includes `ops_bind`** | `depth, limit` |
 | `find_callees(name)` | What this function calls — **includes `ops_bind`** | `depth, limit` |
 | `call_path(source, target)` | Call path between two functions | `max_len` |
+| `get_callchain(name)` | Call chain from a function **up to a root** (syscall/entry), incl. `ops_bind` | `max_depth` |
 | `find_references(name)` | Every use site of a symbol, with enclosing function | `limit` |
 
 ### Types & structure
@@ -271,10 +272,10 @@ of exploding into full subgraphs.
                                   │
                                   ▼
 ┌───────────────────────────────────────────────────────────────┐
-│                     KGraph MCP Server (12 tools)               │
+│                     KGraph MCP Server (13 tools)               │
 │  search · get_symbol · get_function_body · callers · callees   │
-│  call_path · references · type_definition · struct_layout      │
-│  neighborhood · ops_impls · index_status                       │
+│  call_path · callchain · references · type_definition          │
+│  struct_layout · neighborhood · ops_impls · index_status       │
 │                                  │                             │
 │                                  ▼                             │
 │              SQLite knowledge graph (.kgraph/kgraph.db)        │
@@ -296,26 +297,29 @@ one new `GraphStore` — the parser, MCP tools, and agent integration don't chan
 
 ---
 
-## Health Dashboard (GraphView)
+## GraphView — Health Dashboard + Interactive Explorer
 
-KGraph continuously proves it can build a **correct** index on Linux mainline — automatically,
-every day, on free GitHub Actions runners. The [`Linux Build & Index Probe`](.github/workflows/linux-build-probe.yml)
-workflow clones `torvalds/linux` master, builds `compile_commands.json` (`make CC="ccache clang" LLVM=1`),
-indexes with scip-clang, ingests into a `kgraph.db`, then runs a **synthetic retrieval canary**
-(known-answer checks: `file_operations` fields, `read_iter` ops-bind incl. `ext4`, index-scale sanity)
-and emits `metrics.json`.
+GraphView has two sides, both in the `graphview/` directory:
 
-The last 7 runs are shown in the **GraphView** health dashboard — a dependency-free static page:
+**Health dashboard** — KGraph continuously proves it can build a **correct** index on Linux
+mainline, automatically every day on free GitHub Actions runners. The
+[`Linux Build & Index Probe`](.github/workflows/linux-build-probe.yml) clones `torvalds/linux`,
+builds + indexes + ingests, runs a **synthetic retrieval canary**, and emits `metrics.json`.
+The last 7 runs render as a dependency-free static 7-day list (buildable ✓/✗, canary M/N,
+symbol/edge counts, timing), published to GitHub Pages by [`deploy-graphview.yml`](.github/workflows/deploy-graphview.yml).
+
+**Interactive explorer** (`kgraph view`) — a local read-only HTTP server (stdlib, zero new deps)
+that serves the code graph over your own `kgraph.db`: search → center a symbol → explore its
+callers/callees/neighborhood, resolve an **ops table** (`read_iter` → every implementation), or
+trace a **call chain** up to a syscall root. Same-origin (server serves both page and API → no CORS).
 
 ```bash
-cd graphview && python3 -m http.server 8000    # then open http://localhost:8000
+kgraph view                       # or: python view/server.py --db <kgraph.db> --root <linux>
+# → http://localhost:8000/graph.html   (health: http://localhost:8000/)
 ```
 
-Each row is one daily run: **buildable** ✓/✗ (build + index + ingest), **benchmark** M/N (the canary),
-symbol/edge counts (incl. `ops_bind`, `contains`), and build/index/ingest timing. Data lives in
-`graphview/data/metrics.jsonl` (one line per run, auto-committed by CI). Deploy as a GitHub Pages
-site from the `graphview/` folder for a public dashboard. (Interactive SQLite graph visualization
-is planned; the dashboard today is the health 7-day list.)
+The explorer's three views: **Neighborhood** (Cytoscape.js graph), **Ops table**, **Call chain**.
+(A read-only Pages demo of pre-baked subgraphs is a planned follow-up; the local explorer is live.)
 
 ---
 
@@ -333,6 +337,7 @@ kgraph uninstall                   # remove kgraph config from agents
 kgraph init <path>                 # index + ingest (--skip-build, --subsystem, --force)
 kgraph ingest <path>               # re-ingest from an existing index.scip
 kgraph serve --mcp                 # start the MCP server (usually auto-launched by the agent)
+kgraph view                        # local interactive graph explorer (HTTP + browser UI)
 kgraph status <path>               # show index statistics and health
 ```
 
@@ -401,13 +406,16 @@ KGraph/
 │       ├── cli.py                  #   `kgraph install` CLI
 │       └── targets/                #   claude · cursor · codex · opencode · hermes
 ├── mcp/
-│   ├── server.py                   # MCP server (12 tools)
+│   ├── server.py                   # MCP server (13 tools)
 │   ├── source_reader.py            # reads function bodies from disk
 │   └── examples/                   # per-agent manual config snippets
+├── view/
+│   └── server.py                   # `kgraph view` — local explorer (HTTP API + static)
 ├── bench/
 │   └── health_check.py             # synthetic retrieval canary + metrics collector
-├── graphview/                      # health dashboard (static, 7-day list)
-│   ├── index.html · app.js         # dashboard UI
+├── graphview/                      # health dashboard + interactive explorer
+│   ├── index.html · app.js         # health 7-day list
+│   ├── graph.html · graph.js       # explorer (neighborhood · ops table · call chain)
 │   └── data/metrics.jsonl          # one row per CI run (auto-committed)
 └── tests/
     ├── conftest.py                  # shared fixtures & synthetic SCIP benchmark
