@@ -213,18 +213,32 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-      # Commit the appended metrics.jsonl so the static GraphView dashboard
-      # (reading graphview/data/metrics.jsonl) shows run history.
-      # continue-on-error: a commit/push failure (protected branch, HEAD race)
-      # must not fail the run — metrics.json artifact is already uploaded.
-      - name: Publish metrics.jsonl to GraphView data
+      # ── Phase 5: bake GraphView snapshots for the static Pages demo ──
+      # Pre-bakes curated views (ops table / call chain / struct layout /
+      # function body) into graphview/data/ — Pages can't run the live API, so
+      # the explorer renders these in snapshot mode. JSON shapes match /api/*.
+
+      - name: Bake GraphView snapshots
+        if: success()
+        run: |
+          python3 view/bake.py \
+            --db linux/.kgraph/kgraph.db \
+            --root linux \
+            --out graphview/data
+
+      # Commit metrics.jsonl + baked snapshots so the static GraphView (health
+      # list + Pages explorer snapshots) updates each run.
+      # continue-on-error: a commit/push failure must not fail the run.
+      - name: Publish metrics.jsonl + snapshots to GraphView data
         if: success()
         continue-on-error: true
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add graphview/data/metrics.jsonl
-          git commit -m "chore(graphview): health metrics for ${HEAD_SHORT}" \
+          git add graphview/data/metrics.jsonl \
+                  graphview/data/manifest.json \
+                  graphview/data/snapshot_*.json
+          git commit -m "chore(graphview): health metrics + snapshots for ${HEAD_SHORT}" \
             || echo "nothing to commit"
           git push
 

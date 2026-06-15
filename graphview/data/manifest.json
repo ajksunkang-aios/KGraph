@@ -1,0 +1,30 @@
+[
+  {
+    "key": "ops_read_iter",
+    "title": "read_iter ops table \u2014 VFS indirect-call impls",
+    "view": "ops",
+    "file": "data/snapshot_ops_read_iter.json",
+    "count": 26
+  },
+  {
+    "key": "callchain_vfs_read",
+    "title": "vfs_read call chain \u2192 syscall root",
+    "view": "callchain",
+    "file": "data/snapshot_callchain_vfs_read.json",
+    "count": 3
+  },
+  {
+    "key": "struct_file_operations",
+    "title": "struct file_operations layout",
+    "view": "struct",
+    "file": "data/snapshot_struct_file_operations.json",
+    "count": 0
+  },
+  {
+    "key": "body_vfs_read",
+    "title": "vfs_read function body (actual source)",
+    "view": "body",
+    "file": "data/snapshot_body_vfs_read.json",
+    "count": 30
+  }
+]

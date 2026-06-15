@@ -1,0 +1,26 @@
+[
+  {
+    "depth": 0,
+    "scip_symbol": "cxx . . $ vfs_read(1c6f6fefb65b5328).",
+    "name": "vfs_read",
+    "kind": "function",
+    "file_path": null,
+    "line": null
+  },
+  {
+    "depth": 1,
+    "scip_symbol": "cxx . . $ ksys_read(454afb54c8c48e05).",
+    "name": "ksys_read",
+    "kind": "function",
+    "file_path": "fs/read_write.c",
+    "line": 716
+  },
+  {
+    "depth": 2,
+    "scip_symbol": "cxx . . $ __do_sys_read(454afb54c8c48e05).",
+    "name": "__do_sys_read",
+    "kind": "function",
+    "file_path": "fs/read_write.c",
+    "line": 725
+  }
+]

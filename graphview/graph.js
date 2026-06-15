@@ -33,6 +33,41 @@ function fileLine(file, line) {
   return `${file ? esc(file) : "?"}:${line != null ? line + 1 : "?"}`;
 }
 
+// ── HTML generators (shared by live API + static snapshot mode) ──
+function bodyHTML(b) {
+  if (!b || !b.body) return `<div class="note">no on-disk body</div>`;
+  return `<div class="tag">${fileLine(b.file, b.start_line)}</div><pre>${esc(b.body)}</pre>`;
+}
+function opsRowsHTML(rows) {
+  if (!rows || !rows.length) return `<tr><td colspan="5" class="note">none</td></tr>`;
+  return rows.map((r) =>
+    `<tr class="row" onclick="center('${esc(r.impl_symbol)}','${esc(r.impl_name)}','function')">
+       <td>${esc(r.ops_name)}<br><span class="tag">${fileLine(r.file_path, r.line)}</span></td>
+       <td><b>${esc(r.impl_name)}</b></td>
+       <td>${esc(r.field_name || "")}</td>
+       <td class="r">${fileLine(r.file_path, r.line)}</td>
+       <td class="r">${r.confidence ?? ""}</td>
+     </tr>`).join("");
+}
+function chainHTML(chain) {
+  if (!chain || !chain.length) return `<span class="err">not found</span>`;
+  return `<div style="font-family:ui-monospace,monospace;font-size:13px;line-height:1.9">` +
+    chain.map((n) => {
+      const loc = n.line != null ? fileLine(n.file_path, n.line) : "(target)";
+      const cls = n.depth === 0 ? `style="color:#cf222e;font-weight:600"` : "";
+      const arr = n.depth > 0 ? `<span class="tag">  &uarr; called by</span><br>` : "";
+      return `${arr}<span ${cls} style="cursor:pointer" onclick="center('${esc(n.scip_symbol)}','${esc(n.name)}','${esc(n.kind)}')">${esc(n.name)}</span> <span class="tag">(${esc(n.kind)})</span> <span class="tag">${loc}</span>`;
+    }).join("") + `</div>`;
+}
+function structHTML(layout) {
+  const fields = (layout && layout.fields) || [];
+  if (!fields.length) return `<div class="note">no fields recorded (struct may be external / opaque, or the index predates contains-edge derivation).</div>`;
+  return `<table><thead><tr><th>#</th><th>field</th><th>kind</th><th>signature</th></tr></thead><tbody>` +
+    fields.map((f, i) => `<tr class="row" onclick="center('${esc(f.scip_symbol)}','${esc(f.name)}','${esc(f.kind)}')">
+      <td class="r">${i + 1}</td><td><b>.${esc(f.name)}</b></td><td>${esc(f.kind)}</td>
+      <td><span class="tag">${esc(f.signature || "")}</span></td></tr>`).join("") + `</tbody></table>`;
+}
+
 // ── search → center ──
 async function doSearch() {
   const q = $("q").value.trim();
@@ -52,6 +87,12 @@ async function doSearch() {
 
 // ── center a symbol: neighborhood + callers + callees + body ──
 async function center(scip, name, kind) {
+  if (SNAPSHOT_MODE) {
+    // No live API on the static Pages demo — hint to run locally.
+    $("demoOut").insertAdjacentHTML("afterbegin",
+      `<div class="note">Run <span class="tag">kgraph view</span> locally to explore <b>${esc(name)}</b> interactively.</div>`);
+    return;
+  }
   centeredScip = scip;
   $("centerTag").innerHTML = `centered: <b>${esc(name)}</b> <span class="pill">${esc(kind || "")}</span>`;
   $("q").value = name;
@@ -65,9 +106,7 @@ async function center(scip, name, kind) {
     drawGraph(nb, scip, name);
     renderList("callers", callers, "← calls");
     renderList("callees", callees, "calls →");
-    $("body").innerHTML = body.body
-      ? `<div class="tag">${fileLine(body.file, body.start_line)}</div><pre>${esc(body.body)}</pre>`
-      : `<div class="note">no on-disk body</div>`;
+    $("body").innerHTML = bodyHTML(body);
   } catch (e) {
     $("centerTag").innerHTML = `<span class="err">${esc(e.message)}</span>`;
   }
@@ -130,14 +169,7 @@ async function doOps() {
   try {
     const rows = await api(`/api/ops?field=${encodeURIComponent(field)}${st ? "&struct_type=" + encodeURIComponent(st) : ""}`);
     $("opsCount").textContent = `${rows.length} implementation(s)`;
-    $("opsTable").querySelector("tbody").innerHTML = rows.length ? rows.map((r) =>
-      `<tr class="row" onclick="center('${esc(r.impl_symbol)}','${esc(r.impl_name)}','function')">
-         <td>${esc(r.ops_name)}<br><span class="tag">${fileLine(r.file_path, r.line)}</span></td>
-         <td><b>${esc(r.impl_name)}</b></td>
-         <td>${esc(r.field_name || field)}</td>
-         <td class="r">${fileLine(r.file_path, r.line)}</td>
-         <td class="r">${r.confidence ?? ""}</td>
-       </tr>`).join("") : `<tr><td colspan="5" class="note">none</td></tr>`;
+    $("opsTable").querySelector("tbody").innerHTML = opsRowsHTML(rows);
   } catch (e) { $("opsCount").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
 }
 
@@ -148,15 +180,8 @@ async function doChain() {
   $("chainCount").textContent = "tracing…";
   try {
     const chain = await api(`/api/callchain?name=${encodeURIComponent(name)}&max_depth=20`);
-    if (!chain.length) { $("chainOut").innerHTML = `<span class="err">not found</span>`; $("chainCount").textContent = ""; return; }
-    $("chainCount").textContent = `${chain.length} levels`;
-    $("chainOut").innerHTML = `<div style="font-family:ui-monospace,monospace;font-size:13px;line-height:1.9">` +
-      chain.map((n, i) => {
-        const loc = n.line != null ? fileLine(n.file_path, n.line) : "(target)";
-        const cls = n.depth === 0 ? `style="color:#cf222e;font-weight:600"` : "";
-        const arr = n.depth > 0 ? `<span class="tag">  &uarr; called by</span><br>` : "";
-        return `${arr}<span ${cls} style="cursor:pointer" onclick="center('${esc(n.scip_symbol)}','${esc(n.name)}','${esc(n.kind)}')">${esc(n.name)}</span> <span class="tag">(${esc(n.kind)})</span> <span class="tag">${loc}</span>`;
-      }).join("") + `</div>`;
+    $("chainCount").textContent = chain.length ? `${chain.length} levels` : "";
+    $("chainOut").innerHTML = chainHTML(chain);
   } catch (e) { $("chainCount").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
 }
 
@@ -174,6 +199,49 @@ function showTab(t) {
 window.showTab = showTab;
 window.center = center;
 
+// ── snapshot mode (static Pages: no live API) ──
+let SNAPSHOT_MODE = false;
+const SNAPSHOTS = {};
+async function detectMode() {
+  try {
+    const s = await api("/api/status");
+    $("dbtag").textContent = `kgraph.db · ${(s.metadata || {}).total_symbols || "?"} symbols`;
+  } catch {
+    SNAPSHOT_MODE = true;
+    enterSnapshotMode();   // no API → static demo
+  }
+}
+async function enterSnapshotMode() {
+  document.querySelectorAll(".bar,.tabs,#paneGraph,#paneOps,#paneChain")
+    .forEach((e) => { e.style.display = "none"; });
+  $("demoPanel").style.display = "block";
+  $("dbtag").textContent = "static demo (Pages)";
+  try {
+    const man = await api("data/manifest.json");
+    $("demoSelect").innerHTML = man.map((m) =>
+      `<option value="${esc(m.key)}">${esc(m.title)}</option>`).join("");
+    man.forEach((m) => { SNAPSHOTS[m.key] = m; });
+    if (man[0]) loadSnapshot(man[0].key);
+  } catch (e) {
+    $("demoOut").innerHTML = `<span class="err">no snapshots available: ${esc(e.message)}</span>`;
+  }
+}
+async function loadSnapshot(key) {
+  const m = SNAPSHOTS[key];
+  if (!m) return;
+  try {
+    const data = await api(m.file);
+    $("demoTitle").textContent = `(${m.count} items)`;
+    let html = "";
+    if (m.view === "ops") html = `<table><thead><tr><th>ops table</th><th>→ impl</th><th>field</th><th>file:line</th><th>conf</th></tr></thead><tbody>${opsRowsHTML(data)}</tbody></table>`;
+    else if (m.view === "callchain") html = chainHTML(data);
+    else if (m.view === "struct") html = structHTML(data);
+    else if (m.view === "body") html = bodyHTML(data);
+    $("demoOut").innerHTML = html || `<span class="err">unknown view: ${esc(m.view)}</span>`;
+  } catch (e) { $("demoOut").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+}
+window.loadSnapshot = loadSnapshot;
+
 // ── wire ──
 $("searchBtn").addEventListener("click", doSearch);
 $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
@@ -182,8 +250,4 @@ $("field").addEventListener("keydown", (e) => { if (e.key === "Enter") doOps(); 
 $("chainBtn").addEventListener("click", doChain);
 $("chainName").addEventListener("keydown", (e) => { if (e.key === "Enter") doChain(); });
 
-// status badge (db / counts)
-api("/api/status").then((s) => {
-  const m = s.metadata || {};
-  $("dbtag").textContent = `kgraph.db · ${m.total_symbols || "?"} symbols`;
-}).catch(() => {});
+detectMode();   // interactive (local kgraph view) or snapshot demo (Pages)

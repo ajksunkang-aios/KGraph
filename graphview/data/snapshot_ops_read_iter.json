@@ -1,0 +1,262 @@
+[
+  {
+    "ops_name": "def_blk_fops",
+    "impl_name": "blkdev_read_iter",
+    "ops_symbol": "cxx . . $ def_blk_fops.",
+    "impl_symbol": "cxx . . $ blkdev_read_iter(c5f3e27501c4297d).",
+    "file_path": "block/fops.c",
+    "line": 955,
+    "field_name": "blkdev_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "null_fops",
+    "impl_name": "read_iter_null",
+    "ops_symbol": "cxx . . $ null_fops.",
+    "impl_symbol": "cxx . . $ read_iter_null(c5f3e27501c4297d).",
+    "file_path": "drivers/char/mem.c",
+    "line": 663,
+    "field_name": "read_iter_null",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "zero_fops",
+    "impl_name": "read_iter_zero",
+    "ops_symbol": "cxx . . $ zero_fops.",
+    "impl_symbol": "cxx . . $ read_iter_zero(c5f3e27501c4297d).",
+    "file_path": "drivers/char/mem.c",
+    "line": 681,
+    "field_name": "read_iter_zero",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "full_fops",
+    "impl_name": "read_iter_zero",
+    "ops_symbol": "cxx . . $ full_fops.",
+    "impl_symbol": "cxx . . $ read_iter_zero(c5f3e27501c4297d).",
+    "file_path": "drivers/char/mem.c",
+    "line": 695,
+    "field_name": "read_iter_zero",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "random_fops",
+    "impl_name": "random_read_iter",
+    "ops_symbol": "cxx . . $ random_fops.",
+    "impl_symbol": "cxx . . $ random_read_iter(c5f3e27501c4297d).",
+    "file_path": "drivers/char/random.c",
+    "line": 1555,
+    "field_name": "random_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "urandom_fops",
+    "impl_name": "urandom_read_iter",
+    "ops_symbol": "cxx . . $ urandom_fops.",
+    "impl_symbol": "cxx . . $ urandom_read_iter(c5f3e27501c4297d).",
+    "file_path": "drivers/char/random.c",
+    "line": 1567,
+    "field_name": "urandom_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "v9fs_file_operations",
+    "impl_name": "v9fs_file_read_iter",
+    "ops_symbol": "cxx . . $ v9fs_file_operations.",
+    "impl_symbol": "cxx . . $ v9fs_file_read_iter(c5f3e27501c4297d).",
+    "file_path": "fs/9p/vfs_file.c",
+    "line": 510,
+    "field_name": "v9fs_file_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "ext4_file_operations",
+    "impl_name": "ext4_file_read_iter",
+    "ops_symbol": "cxx . . $ ext4_file_operations.",
+    "impl_symbol": "cxx . . $ ext4_file_read_iter(c5f3e27501c4297d).",
+    "file_path": "fs/ext4/file.c",
+    "line": 975,
+    "field_name": "ext4_file_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "hugetlbfs_file_operations",
+    "impl_name": "hugetlbfs_read_iter",
+    "ops_symbol": "cxx . . $ hugetlbfs_file_operations.",
+    "impl_symbol": "cxx . . $ hugetlbfs_read_iter(c5f3e27501c4297d).",
+    "file_path": "fs/hugetlbfs/inode.c",
+    "line": 1208,
+    "field_name": "hugetlbfs_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "kernfs_file_fops",
+    "impl_name": "kernfs_fop_read_iter",
+    "ops_symbol": "cxx . . $ kernfs_file_fops.",
+    "impl_symbol": "cxx . . $ kernfs_fop_read_iter(c5f3e27501c4297d).",
+    "file_path": "fs/kernfs/file.c",
+    "line": 1015,
+    "field_name": "kernfs_fop_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "proc_iter_file_ops",
+    "impl_name": "proc_reg_read_iter",
+    "ops_symbol": "cxx . . $ proc_iter_file_ops.",
+    "impl_symbol": "cxx . . $ proc_reg_read_iter(c5f3e27501c4297d).",
+    "file_path": "fs/proc/inode.c",
+    "line": 567,
+    "field_name": "proc_reg_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "signalfd_fops",
+    "impl_name": "signalfd_read_iter",
+    "ops_symbol": "cxx . . $ signalfd_fops.",
+    "impl_symbol": "cxx . . $ signalfd_read_iter(c5f3e27501c4297d).",
+    "file_path": "fs/signalfd.c",
+    "line": 246,
+    "field_name": "signalfd_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "timerfd_fops",
+    "impl_name": "timerfd_read_iter",
+    "ops_symbol": "cxx . . $ timerfd_fops.",
+    "impl_symbol": "cxx . . $ timerfd_read_iter(c5f3e27501c4297d).",
+    "file_path": "fs/timerfd.c",
+    "line": 387,
+    "field_name": "timerfd_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "tracing_fops",
+    "impl_name": "seq_read_iter",
+    "ops_symbol": "cxx . . $ tracing_fops.",
+    "impl_symbol": "cxx . . $ seq_read_iter(c5f3e27501c4297d).",
+    "file_path": "kernel/trace/trace.c",
+    "line": 3785,
+    "field_name": "seq_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "shmem_file_operations",
+    "impl_name": "shmem_file_read_iter",
+    "ops_symbol": "cxx . . $ shmem_file_operations.",
+    "impl_symbol": "cxx . . $ shmem_file_read_iter(c5f3e27501c4297d).",
+    "file_path": "mm/shmem.c",
+    "line": 5222,
+    "field_name": "shmem_file_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "socket_file_ops",
+    "impl_name": "sock_read_iter",
+    "ops_symbol": "cxx . . $ socket_file_ops.",
+    "impl_symbol": "cxx . . $ sock_read_iter(c5f3e27501c4297d).",
+    "file_path": "net/socket.c",
+    "line": 158,
+    "field_name": "sock_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "fat_file_operations",
+    "impl_name": "generic_file_read_iter",
+    "ops_symbol": "cxx . . $ fat_file_operations.",
+    "impl_symbol": "cxx . . $ generic_file_read_iter(c5f3e27501c4297d).",
+    "file_path": "fs/fat/file.c",
+    "line": 206,
+    "field_name": "generic_file_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "cpuinfo_proc_ops",
+    "impl_name": "seq_read_iter",
+    "ops_symbol": "cxx . . $ cpuinfo_proc_ops.",
+    "impl_symbol": "cxx . . $ seq_read_iter(c5f3e27501c4297d).",
+    "file_path": "fs/proc/cpuinfo.c",
+    "line": 17,
+    "field_name": "seq_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "proc_seq_ops",
+    "impl_name": "seq_read_iter",
+    "ops_symbol": "cxx . . $ proc_seq_ops.",
+    "impl_symbol": "cxx . . $ seq_read_iter(c5f3e27501c4297d).",
+    "file_path": "fs/proc/generic.c",
+    "line": 628,
+    "field_name": "seq_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "proc_single_ops",
+    "impl_name": "seq_read_iter",
+    "ops_symbol": "cxx . . $ proc_single_ops.",
+    "impl_symbol": "cxx . . $ seq_read_iter(c5f3e27501c4297d).",
+    "file_path": "fs/proc/generic.c",
+    "line": 659,
+    "field_name": "seq_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "stat_proc_ops",
+    "impl_name": "seq_read_iter",
+    "ops_symbol": "cxx . . $ stat_proc_ops.",
+    "impl_symbol": "cxx . . $ seq_read_iter(c5f3e27501c4297d).",
+    "file_path": "fs/proc/stat.c",
+    "line": 205,
+    "field_name": "seq_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "proc_mounts_operations",
+    "impl_name": "seq_read_iter",
+    "ops_symbol": "cxx . . $ proc_mounts_operations.",
+    "impl_symbol": "cxx . . $ seq_read_iter(c5f3e27501c4297d).",
+    "file_path": "fs/proc_namespace.c",
+    "line": 314,
+    "field_name": "seq_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "proc_mountinfo_operations",
+    "impl_name": "seq_read_iter",
+    "ops_symbol": "cxx . . $ proc_mountinfo_operations.",
+    "impl_symbol": "cxx . . $ seq_read_iter(c5f3e27501c4297d).",
+    "file_path": "fs/proc_namespace.c",
+    "line": 323,
+    "field_name": "seq_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "proc_mountstats_operations",
+    "impl_name": "seq_read_iter",
+    "ops_symbol": "cxx . . $ proc_mountstats_operations.",
+    "impl_symbol": "cxx . . $ seq_read_iter(c5f3e27501c4297d).",
+    "file_path": "fs/proc_namespace.c",
+    "line": 332,
+    "field_name": "seq_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "ramfs_file_operations",
+    "impl_name": "generic_file_read_iter",
+    "ops_symbol": "cxx . . $ ramfs_file_operations.",
+    "impl_symbol": "cxx . . $ generic_file_read_iter(c5f3e27501c4297d).",
+    "file_path": "fs/ramfs/file-mmu.c",
+    "line": 41,
+    "field_name": "generic_file_read_iter",
+    "confidence": 0.5
+  },
+  {
+    "ops_name": "generic_ro_fops",
+    "impl_name": "generic_file_read_iter",
+    "ops_symbol": "cxx . . $ generic_ro_fops.",
+    "impl_symbol": "cxx . . $ generic_file_read_iter(c5f3e27501c4297d).",
+    "file_path": "fs/read_write.c",
+    "line": 30,
+    "field_name": "generic_file_read_iter",
+    "confidence": 0.5
+  }
+]

@@ -64,6 +64,18 @@
     <h1>KGraph Explorer</h1>
     <p class="sub">Interactive code-graph over <span id="dbtag">kgraph.db</span>. Center a symbol → explore its callers/callees; or resolve an ops table.</p>
 
+    <!-- Snapshot/demo mode: shown only on the static Pages site (no live API). -->
+    <div id="demoPanel" class="card" style="display:none">
+      <div class="bar">
+        <b>Demo view:</b>
+        <select id="demoSelect" onchange="loadSnapshot(this.value)"></select>
+        <span id="demoTitle" class="tag"></span>
+      </div>
+      <p class="note">Static demo — pre-baked snapshots (Pages can't query the index live).
+        Run <span class="tag">kgraph view</span> locally for full interactive exploration.</p>
+      <div id="demoOut"></div>
+    </div>
+
     <div class="bar">
       <input id="q" type="text" placeholder="symbol name (e.g. vfs_read, file_operations)" />
       <select id="kind"><option value="">any kind</option>

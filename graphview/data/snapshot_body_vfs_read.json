@@ -1,0 +1,7 @@
+{
+  "name": "vfs_read",
+  "kind": "function",
+  "file": "fs/read_write.c",
+  "start_line": 553,
+  "body": "   554\tssize_t vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)\n   555\t{\n   556\t\tssize_t ret;\n   557\t\n   558\t\tif (!(file->f_mode & FMODE_READ))\n   559\t\t\treturn -EBADF;\n   560\t\tif (!(file->f_mode & FMODE_CAN_READ))\n   561\t\t\treturn -EINVAL;\n   562\t\tif (unlikely(!access_ok(buf, count)))\n   563\t\t\treturn -EFAULT;\n   564\t\n   565\t\tret = rw_verify_area(READ, file, pos, count);\n   566\t\tif (ret)\n   567\t\t\treturn ret;\n   568\t\tif (count > MAX_RW_COUNT)\n   569\t\t\tcount =  MAX_RW_COUNT;\n   570\t\n   571\t\tif (file->f_op->read)\n   572\t\t\tret = file->f_op->read(file, buf, count, pos);\n   573\t\telse if (file->f_op->read_iter)\n   574\t\t\tret = new_sync_read(file, buf, count, pos);\n   575\t\telse\n   576\t\t\tret = -EINVAL;\n   577\t\tif (ret > 0) {\n   578\t\t\tfsnotify_access(file);\n   579\t\t\tadd_rchar(current, ret);\n   580\t\t}\n   581\t\tinc_syscr(current);\n   582\t\treturn ret;\n   583\t}"
+}
