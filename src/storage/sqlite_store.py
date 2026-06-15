@@ -557,6 +557,61 @@ class SQLiteStore(GraphStore):
         rows = self.conn.execute(sql, (src_id, max_len, dst_id, dst_id, max_len)).fetchall()
         return [dict(r) for r in rows]
 
+    def get_callchain(self, scip_symbol: str, max_depth: int = 20) -> list[dict]:
+        """
+        Trace the call chain from a symbol UP to a root (a symbol with no
+        callers), following `calls` and `ops_bind` edges (indirect calls
+        through ops tables included).
+
+        Walks one caller per level (first by line), with a cycle guard and a
+        depth cap. Returns ONE chain (target at depth 0 → root last), each dict:
+        {depth, scip_symbol, name, kind, file_path, line}. `line`/`file_path`
+        are the call site of the edge into the previous (inner) node.
+        """
+        sym_id = self._get_symbol_id(scip_symbol)
+        if sym_id is None:
+            return []
+
+        # depth 0 = the target itself
+        target = self.conn.execute(
+            "SELECT scip_symbol, name, kind FROM symbols WHERE id = ?", (sym_id,)
+        ).fetchone()
+        chain = [{
+            "depth": 0, "scip_symbol": target["scip_symbol"],
+            "name": target["name"], "kind": target["kind"],
+            "file_path": None, "line": None,
+        }]
+        seen = {sym_id}
+        cur_id = sym_id
+
+        for depth in range(1, max_depth + 1):
+            caller = self.conn.execute(
+                """
+                SELECT e.src_id, e.line, s.scip_symbol, s.name, s.kind,
+                       f.path AS file_path
+                FROM edges e
+                JOIN symbols s ON e.src_id = s.id
+                LEFT JOIN files f ON e.file_id = f.id
+                WHERE e.dst_id = ? AND e.type IN ('calls', 'ops_bind')
+                ORDER BY e.line
+                LIMIT 1
+                """,
+                (cur_id,),
+            ).fetchone()
+            if caller is None:
+                break  # cur is a root (no callers)
+            if caller["src_id"] in seen:
+                break  # cycle guard
+            chain.append({
+                "depth": depth, "scip_symbol": caller["scip_symbol"],
+                "name": caller["name"], "kind": caller["kind"],
+                "file_path": caller["file_path"], "line": caller["line"],
+            })
+            cur_id = caller["src_id"]
+            seen.add(caller["src_id"])
+
+        return chain
+
     def find_ops_impls(self, field_name: str,
                        struct_type: Optional[str] = None) -> list[dict]:
         """Find ops_bind implementations for a function-pointer field."""
@@ -737,6 +792,13 @@ class SQLiteStore(GraphStore):
         """Get all index metadata."""
         rows = self.conn.execute("SELECT key, value FROM meta").fetchall()
         return {r["key"]: r["value"] for r in rows}
+
+    def get_edge_counts(self) -> dict[str, int]:
+        """Count of edges by type (e.g. {'calls': N, 'ops_bind': M, ...})."""
+        rows = self.conn.execute(
+            "SELECT type, COUNT(*) FROM edges GROUP BY type"
+        ).fetchall()
+        return {r[0]: r[1] for r in rows}
 
     def close(self) -> None:
         """Close the database connection."""

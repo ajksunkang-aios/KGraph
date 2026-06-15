@@ -317,6 +317,35 @@ class TestStoreQueries:
         )
         assert layout["fields"] == []
 
+    # ── get_callchain ──
+
+    def test_get_callchain(self):
+        """Call chain walks callers (calls + ops_bind) up to a root."""
+        chain = self.store.get_callchain(
+            "scip clang c linux v6.12 ext4_file_read_iter().", max_depth=10
+        )
+        # depth 0 = the target itself
+        assert chain[0]["depth"] == 0
+        assert chain[0]["name"] == "ext4_file_read_iter"
+        # it has at least one caller (vfs_read via calls, or ext4_file_operations via ops_bind)
+        assert len(chain) >= 2
+        names = {n["name"] for n in chain}
+        assert names & {"vfs_read", "ext4_file_operations"}
+
+    def test_get_callchain_root(self):
+        """A symbol with no callers is its own (1-level) chain."""
+        chain = self.store.get_callchain(
+            "scip clang c linux v6.12 vfs_read().", max_depth=10
+        )
+        assert len(chain) == 1
+        assert chain[0]["name"] == "vfs_read"
+
+    def test_get_callchain_unknown(self):
+        chain = self.store.get_callchain(
+            "scip clang c linux v6.12 nonexistent().", max_depth=10
+        )
+        assert chain == []
+
     # ── get_neighborhood ──
 
     def test_get_neighborhood_depth_1(self):

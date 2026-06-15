@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KGraph Explorer</title>
+  <style>
+    :root {
+      --ok: #1a7f37; --bad: #cf222e; --muted: #6e7781;
+      --bg: #f6f8fa; --card: #fff; --line: #d0d7de; --head: #1f2328;
+      --accent: #0969da;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--head); }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 18px 20px 60px; }
+    .nav { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+    .nav a { color: var(--accent); text-decoration: none; }
+    .nav a.cur { color: var(--head); font-weight: 600; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: var(--muted); margin: 0 0 16px; }
+    .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+    input[type=text], select { font: inherit; padding: 6px 9px; border: 1px solid var(--line);
+      border-radius: 6px; background: var(--card); }
+    input[type=text] { min-width: 260px; }
+    button { font: inherit; padding: 6px 12px; border: 1px solid var(--line);
+      border-radius: 6px; background: var(--card); cursor: pointer; }
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .grid { display: grid; grid-template-columns: 1fr 320px; gap: 14px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+            padding: 12px; }
+    #cy { width: 100%; height: 560px; background: #fff; border-radius: 6px; }
+    .side h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase;
+               letter-spacing: .04em; color: var(--muted); }
+    .side ul { list-style: none; padding: 0; margin: 0 0 12px; max-height: 150px;
+               overflow: auto; }
+    .side li { padding: 2px 0; cursor: pointer; }
+    .side li:hover { color: var(--accent); }
+    .tag { font-size: 11px; color: var(--muted); }
+    .pill { display: inline-block; padding: 0 6px; border-radius: 10px; font-size: 11px;
+            background: #ebeef1; }
+    .pill.ops { color: var(--bad); background: #ffebe9; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--line);
+             white-space: nowrap; }
+    th { color: var(--muted); font-weight: 600; }
+    td.r { font-variant-numeric: tabular-nums; }
+    tr.row { cursor: pointer; }
+    tr.row:hover { background: #f6f8fa; }
+    pre { background: #0d1117; color: #e6edf3; padding: 12px; border-radius: 6px;
+          overflow: auto; max-height: 360px; font-size: 12px; line-height: 1.45; }
+    .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+    .tabs button { border: none; background: none; color: var(--muted); padding: 6px 10px;
+                   border-bottom: 2px solid transparent; }
+    .tabs button.active { color: var(--head); border-bottom-color: var(--accent); }
+    .note { color: var(--muted); font-size: 12px; }
+    .err { color: var(--bad); }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="nav"><a href="index.html">Health</a> · <a href="graph.html" class="cur">Explorer</a></div>
+    <h1>KGraph Explorer</h1>
+    <p class="sub">Interactive code-graph over <span id="dbtag">kgraph.db</span>. Center a symbol → explore its callers/callees; or resolve an ops table.</p>
+
+    <div class="bar">
+      <input id="q" type="text" placeholder="symbol name (e.g. vfs_read, file_operations)" />
+      <select id="kind"><option value="">any kind</option>
+        <option>function</option><option>struct</option><option>field</option>
+        <option>macro</option><option>typedef</option><option>global_var</option></select>
+      <button id="searchBtn" class="primary">Search</button>
+      <span id="centerTag" class="tag"></span>
+    </div>
+
+    <div class="tabs">
+      <button id="tabGraph" class="active" onclick="showTab('graph')">Neighborhood</button>
+      <button id="tabOps" onclick="showTab('ops')">Ops table</button>
+      <button id="tabChain" onclick="showTab('chain')">Call chain</button>
+    </div>
+
+    <!-- Neighborhood tab -->
+    <div id="paneGraph" class="grid">
+      <div class="card">
+        <div id="cy"></div>
+        <div class="note" id="cap"></div>
+      </div>
+      <div class="card side">
+        <h3>Callers</h3><ul id="callers"></ul>
+        <h3>Callees</h3><ul id="callees"></ul>
+        <h3>Body</h3><div id="body" class="note">click a function</div>
+      </div>
+    </div>
+
+    <!-- Ops tab -->
+    <div id="paneOps" class="card" style="display:none">
+      <div class="bar">
+        <input id="field" type="text" placeholder="ops field (e.g. read_iter)" />
+        <input id="st" type="text" placeholder="struct filter (optional, e.g. ext4_file_operations)" style="min-width:200px" />
+        <button id="opsBtn" class="primary">Resolve</button>
+        <span id="opsCount" class="note"></span>
+      </div>
+      <table id="opsTable">
+        <thead><tr><th>ops table</th><th>→ impl</th><th>field</th><th>file:line</th><th>conf</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <!-- Call chain tab -->
+    <div id="paneChain" class="card" style="display:none">
+      <div class="bar">
+        <input id="chainName" type="text" placeholder="function (e.g. vfs_read)" />
+        <button id="chainBtn" class="primary">Trace</button>
+        <span id="chainCount" class="note"></span>
+      </div>
+      <div id="chainOut" class="note">enter a function to trace its call chain up to a root (syscall / entry).</div>
+    </div>
+  </div>
+
+  <!-- Cytoscape.js via CDN (Phase 1, local). Phase 2 will vendor this for offline Pages. -->
+  <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+  <script src="graph.js"></script>
+</body>
+</html>

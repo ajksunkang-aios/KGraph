@@ -33,6 +33,7 @@ class GraphStore(ABC):
         - find_callees():    forward call graph
         - get_neighborhood(): N-hop subgraph
         - call_path():       path between two symbols
+        - get_callchain():   call chain from a symbol up to a root (callers)
         - find_ops_impls():  function-pointer field implementations
 
     The write side is used during `kgraph init` (ingestion pipeline).
@@ -114,6 +115,19 @@ class GraphStore(ABC):
 
         Returns list of dicts representing the path:
         each dict has: symbol, name, kind, file_path, line.
+        """
+        ...
+
+    @abstractmethod
+    def get_callchain(self, scip_symbol: str, max_depth: int = 20) -> list[dict]:
+        """
+        Trace the call chain from a symbol UP to a root (a symbol with no
+        callers), following `calls` and `ops_bind` edges (so indirect calls
+        through ops tables are included). Returns ONE chain (the first caller
+        per level), not the full caller tree.
+
+        Returns an ordered list of dicts (target at depth 0 → root last),
+        each with: depth, scip_symbol, name, kind, file_path, line.
         """
         ...
 

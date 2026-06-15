@@ -57,6 +57,8 @@ cp -r "${PROJECT_ROOT}/src"        "${BUNDLE_DIR}/lib/kgraph/"
 cp -r "${PROJECT_ROOT}/mcp"        "${BUNDLE_DIR}/lib/kgraph/"
 cp -r "${PROJECT_ROOT}/scripts"    "${BUNDLE_DIR}/lib/kgraph/"
 cp -r "${PROJECT_ROOT}/thirdparty" "${BUNDLE_DIR}/lib/kgraph/"
+cp -r "${PROJECT_ROOT}/view"       "${BUNDLE_DIR}/lib/kgraph/"
+cp -r "${PROJECT_ROOT}/graphview"  "${BUNDLE_DIR}/lib/kgraph/"
 
 # Clean __pycache__ from bundle
 find "${BUNDLE_DIR}" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
@@ -93,6 +95,10 @@ case "$CMD" in
     # Build code graph: scip-clang -> parse index.scip -> SQLite
     exec "$PYTHON" "$DIR/lib/kgraph/src/cli/init_cmd.py" "$@"
     ;;
+  view)
+    # Local interactive code-graph explorer (HTTP API + browser UI)
+    exec "$PYTHON" "$DIR/lib/kgraph/view/server.py" "$@"
+    ;;
   ingest|status)
     # Reserved for future index lifecycle commands
     echo "kgraph: '$CMD' is not yet implemented. See https://github.com/ajksunkang/KGraph/issues"
@@ -100,7 +106,7 @@ case "$CMD" in
     ;;
   *)
     echo "kgraph: unknown command '$CMD'"
-    echo "Usage: kgraph {install|detect|uninstall|init|serve} [options]"
+    echo "Usage: kgraph {install|detect|uninstall|init|view|serve} [options]"
     exit 1
     ;;
 esac

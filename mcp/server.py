@@ -296,6 +296,40 @@ def call_path(source: str, target: str, max_len: int = 10) -> str:
     return "\n".join(lines)
 
 
+@mcp.tool()
+def get_callchain(name: str, max_depth: int = 20) -> str:
+    """
+    Trace the call chain from a function UP to a root (a symbol with no
+    callers), following `calls` AND `ops_bind` edges.
+
+    Use to answer "how is this function reached from the top / a syscall?".
+    Returns ONE chain (first caller per level), target first → root last.
+
+    Note: the chain follows STATIC edges. For a function reached only via an
+    ops table (e.g. ext4_file_read_iter via file_operations), the chain ends
+    at the ops table — indirect dispatch cannot be traced backward to its
+    caller (e.g. vfs_read) through the table.
+
+    Args:
+        name: exact symbol name (e.g. "vfs_read")
+        max_depth: max levels to walk up (default 20)
+    """
+    store = get_store()
+    scip = _resolve_one(store, name)
+    if scip is None:
+        return f"No symbol named '{name}'"
+    chain = store.get_callchain(scip, max_depth=max_depth)
+    if not chain:
+        return f"No call chain for '{name}'"
+    lines = [f"Call chain for '{name}' ({len(chain)} levels):"]
+    for n in chain:
+        loc = (f"{n.get('file_path') or '?'}:{(n.get('line') or 0) + 1}"
+               if n.get("line") is not None else "(target)")
+        arrow = "  <- " if n["depth"] > 0 else "     "
+        lines.append(f"{arrow}{n['name']} ({n['kind']}) @ {loc}")
+    return "\n".join(lines)
+
+
 # ── References & types ──
 
 @mcp.tool()
