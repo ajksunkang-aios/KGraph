@@ -71,7 +71,10 @@ jobs:
       - name: Clone Linux mainline (shallow)
         run: |
           REF="${{ inputs.linux_ref }}"
-          # torvalds/linux uses 'master' as its default branch (= mainline tip).
+          # Scheduled (cron) runs have no inputs context → linux_ref is empty.
+          # Fall back to master (= torvalds/linux mainline tip) in that case.
+          REF="${REF:-master}"
+          echo "LINUX_REF=${REF}" >> "$GITHUB_ENV"
           git clone --depth 1 --branch "${REF}" https://github.com/torvalds/linux.git linux
           cd linux
           echo "HEAD: $(git rev-parse HEAD)  ($(git log -1 --format='%ci'))"
@@ -199,7 +202,7 @@ jobs:
           python3 bench/health_check.py \
             --db linux/.kgraph/kgraph.db \
             --index-scip linux/index.scip \
-            --linux-ref "${{ inputs.linux_ref }}" \
+            --linux-ref "${{ env.LINUX_REF }}" \
             --linux-head "${HEAD_SHORT}" \
             --append-jsonl graphview/data/metrics.jsonl \
             --out metrics.json
@@ -246,7 +249,7 @@ jobs:
         if: always()
         run: |
           echo "=============================================="
-          echo " Linux Build & Index Probe  (ref=${{ inputs.linux_ref }}, HEAD=${HEAD_SHORT})"
+          echo " Linux Build & Index Probe  (ref=${{ env.LINUX_REF }}, HEAD=${HEAD_SHORT})"
           echo "=============================================="
           echo "--- build ---"
           echo "make compile_commands.json: ${{ steps.build.outcome }}"
