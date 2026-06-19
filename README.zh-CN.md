@@ -334,7 +334,7 @@ kgraph status <path>               # 查看索引统计与健康
 
 | | **codegraph** | **semcode** | **KGraph** |
 |---|---|---|---|
-| 解析后端 | tree-sitter | tree-sitter | **SCIP-clang** |
+| 解析后端 | tree-sitter | tree-sitter | **scip-clang** |
 | 语义深度 | 语法级 | 语法级 | **编译器级** |
 | 配置感知 | 否（所有分支） | 否（所有分支） | **是（只索引编译的代码）** |
 | 宏解析 | 启发式 | 启发式 | **clang 预处理器** |

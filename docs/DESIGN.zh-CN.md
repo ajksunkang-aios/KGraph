@@ -2,7 +2,7 @@
 
 # KGraph — 编译器感知的内核图谱引擎
 
-> 把内核源码经由 `compile_commands.json + SCIP-clang` 抽取成**编译器语义级**代码知识图谱，
+> 把内核源码经由 `compile_commands.json + scip-clang` 抽取成**编译器语义级**代码知识图谱，
 > 持久化到 SQLite，通过 MCP 暴露精准、紧凑、可裁剪的图查询能力，
 > 让 LLM Agent 在分析内核问题（crash 根因定位、patch 影响分析）时，
 > 用**最少的 token / tool-call** 拿到最相关的上下文。
@@ -15,7 +15,7 @@
 
 | 维度 | **codegraph** (colbymchenry) | **semcode** (facebookexperimental) | **KGraph** |
 |---|---|---|---|
-| 解析后端 | tree-sitter（语法级） | tree-sitter（语法级） | **SCIP-clang（编译器语义级）** |
+| 解析后端 | tree-sitter（语法级） | tree-sitter（语法级） | **scip-clang（编译器语义级）** |
 | 存储后端 | SQLite + FTS5 | LanceDB（向量库） | SQLite + FTS5 |
 | 语言范围 | 20+ 语言通用 | C/C++/Rust | **C（内核），MVP 先 Linux** |
 | 目标场景 | AI agent 通用提效 | 内核工程（git/lore/向量） | **内核 crash/patch 根因定位的 token×tool-call 能效** |
@@ -33,7 +33,7 @@
    KGraph 看到的是 `x86_64 defconfig` 真实激活的那一份。内核里同一函数在不同 config 下行为完全不同。
 
 2. **宏正确展开**：`EXPORT_SYMBOL`、`SYSCALL_DEFINE`、`container_of`、per-cpu 宏、tracepoint 宏——
-   这些是内核的骨架。SCIP-clang 在预处理后索引，符号定位准确；
+   这些是内核的骨架。scip-clang 在预处理后索引，符号定位准确；
    tree-sitter 对内核重宏只能启发式猜（semcode 自己说 macro 只保留 function-like "for better signal-to-noise"）。
 
 3. **真实类型/符号解析**：clang 知道 `f_op` 的真实类型是 `struct file_operations *`，
@@ -104,7 +104,7 @@ Pipeline (Python 编排):
 
 | 决策 | 选择 | 理由 |
 |---|---|---|
-| IndexAdapter 抽象层 | **删除**，SCIP 直接对接 | YAGNI；技术品牌 = compiler-aware，当前只走 SCIP-clang |
+| IndexAdapter 抽象层 | **删除**，SCIP 直接对接 | YAGNI；技术品牌 = compiler-aware，当前只走 scip-clang |
 | GraphStore 抽象层 | **删除**，SQLite 直写 | 部署精简（单 .db 文件）、WAL 批写吞吐够、递归 CTE 读性能够；codegraph 验证可行；未来换 Neo4j 只需重构 Query Engine 内部 SQL→Cypher |
 | KernelProfile | **保留** | 构建系统差异（单仓/多仓）和领域富化都是内核身份绑定的知识，扩展其他内核时只写新 Profile |
 | C/Python 分工 | C 做 ingest 热点，Python 做 query/MCP/编排 | 千万级记录批量灌库走 C；迭代快的逻辑走 Python |
@@ -382,10 +382,10 @@ Agent: find_ops_impls("read_iter", struct_type="file_operations")
 | 维度 | 结论 | 关键风险 | 缓解策略 |
 |---|---|---|---|
 | compile_commands 生成 | ✅ 成熟 | 内核需先成功编译 | MVP 用 `CC=clang LLVM=1` x86_64 defconfig，最稳 |
-| SCIP-clang 索引 | ✅ 可行 | 内核 GCC 扩展/内联汇编；全量索引耗时长 | MVP 支持按子系统/目录裁剪索引（如只 `fs/`） |
+| scip-clang 索引 | ✅ 可行 | 内核 GCC 扩展/内联汇编；全量索引耗时长 | MVP 支持按子系统/目录裁剪索引（如只 `fs/`） |
 | 直接调用图 | ✅ 强 | — | SCIP Occurrence 带 enclosing_range，直接推导 caller→callee |
 | 间接调用（函数指针/ops） | ⚠️ 部分可解 | `file->f_op->read_iter()` SCIP 不解析 | ops_bind 派生 + 字段名→实现函数启发式（低置信标注） |
-| 宏 | ⚠️ 中等 | 内核宏极重 | SCIP-clang 预处理后索引，多数可解；复杂宏标注低置信 |
+| 宏 | ⚠️ 中等 | 内核宏极重 | scip-clang 预处理后索引，多数可解；复杂宏标注低置信 |
 | 按 base_commit 索引 | ⚠️ 成本高 | KBench 每条用例一个 commit | 分层：按 (commit,config) 缓存 + 依赖闭包裁剪索引；MVP 先固定快照 |
 | 存储规模 | ✅ SQLite 扛得住 | 百万级 occurrence | WAL + 批量事务 + 合理索引 + FTS5 |
 

@@ -347,7 +347,7 @@ kgraph status <path>               # show index statistics and health
 
 | | **codegraph** | **semcode** | **KGraph** |
 |---|---|---|---|
-| Parsing backend | tree-sitter | tree-sitter | **SCIP-clang** |
+| Parsing backend | tree-sitter | tree-sitter | **scip-clang** |
 | Semantic depth | syntax-level | syntax-level | **compiler-level** |
 | Config awareness | no (all branches) | no (all branches) | **yes (only compiled code)** |
 | Macro resolution | heuristic | heuristic | **clang preprocessor** |

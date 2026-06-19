@@ -3,7 +3,7 @@
 # KGraph — Compiler-Aware Kernel Graph Engine
 
 > Extract kernel source into a **compiler-semantic** code knowledge graph via
-> `compile_commands.json + SCIP-clang`, persist to SQLite, expose precise, compact,
+> `compile_commands.json + scip-clang`, persist to SQLite, expose precise, compact,
 > trimmable graph queries through MCP — so LLM agents analyzing kernel issues
 > (crash root-cause, patch impact analysis) get the most relevant context with
 > **minimal token / tool-call overhead**.
@@ -16,7 +16,7 @@
 
 | Dimension | **codegraph** (colbymchenry) | **semcode** (facebookexperimental) | **KGraph** |
 |---|---|---|---|
-| Parsing backend | tree-sitter (syntax-level) | tree-sitter (syntax-level) | **SCIP-clang (compiler-semantic)** |
+| Parsing backend | tree-sitter (syntax-level) | tree-sitter (syntax-level) | **scip-clang (compiler-semantic)** |
 | Storage backend | SQLite + FTS5 | LanceDB (vector DB) | SQLite + FTS5 |
 | Language scope | 20+ languages, general | C/C++/Rust | **C (kernel), MVP: Linux** |
 | Target scenario | AI agent general efficiency | Kernel engineering (git/lore/vectors) | **Kernel crash/patch root-cause — token×tool-call efficiency** |
@@ -36,7 +36,7 @@
    KGraph sees only what `x86_64 defconfig` activates. In the kernel, the same function behaves completely differently under different configs.
 
 2. **Macro-resolved**: `EXPORT_SYMBOL`, `SYSCALL_DEFINE`, `container_of`, per-CPU macros, tracepoint macros —
-   these form the kernel's skeleton. SCIP-clang indexes after preprocessing, yielding accurate symbol positions.
+   these form the kernel's skeleton. scip-clang indexes after preprocessing, yielding accurate symbol positions.
    tree-sitter can only heuristic-guess kernel macros (semcode itself says it keeps only function-like macros "for better signal-to-noise").
 
 3. **Precise type/symbol resolution**: clang knows `f_op`'s real type is `struct file_operations *`,
@@ -109,7 +109,7 @@ Pipeline (Python orchestration):
 
 | Decision | Choice | Reason |
 |---|---|---|
-| IndexAdapter layer | **Removed** — SCIP directly | YAGNI; brand = compiler-aware, only SCIP-clang today |
+| IndexAdapter layer | **Removed** — SCIP directly | YAGNI; brand = compiler-aware, only scip-clang today |
 | GraphStore layer | **Removed** — SQLite directly | Deployment simplicity (single .db), WAL batch-write throughput sufficient, recursive CTE read perf sufficient; codegraph validates feasibility; future Neo4j = refactor Query Engine internals SQL→Cypher |
 | KernelProfile | **Retained** | Build system differences (mono/multi-repo) and domain enrichment are kernel-identity-bound knowledge; new kernel = new Profile only |
 | C/Python split | C for ingest hot path, Python for query/MCP/orchestration | 10M+ record bulk write needs C; iterative logic uses Python |
@@ -387,10 +387,10 @@ Same root-cause identification quality:
 | Dimension | Assessment | Key risk | Mitigation |
 |---|---|---|---|
 | compile_commands generation | ✅ Mature | Kernel must compile successfully | MVP: `CC=clang LLVM=1` x86_64 defconfig, most stable |
-| SCIP-clang indexing | ✅ Feasible | Kernel GCC extensions / inline asm; full index slow | MVP: subsystem/directory-scope indexing (e.g. only `fs/`) |
+| scip-clang indexing | ✅ Feasible | Kernel GCC extensions / inline asm; full index slow | MVP: subsystem/directory-scope indexing (e.g. only `fs/`) |
 | Direct call graph | ✅ Strong | — | SCIP Occurrence with enclosing_range → direct caller→callee derivation |
 | Indirect calls (function pointers / ops) | ⚠️ Partially solvable | `file->f_op->read_iter()` SCIP can't resolve | ops_bind derivation + field-name→impl heuristic (low-confidence annotation) |
-| Macros | ⚠️ Moderate | Kernel macros extremely heavy | SCIP-clang indexes after preprocessing, most resolved; complex macros annotated low-confidence |
+| Macros | ⚠️ Moderate | Kernel macros extremely heavy | scip-clang indexes after preprocessing, most resolved; complex macros annotated low-confidence |
 | Per-base_commit indexing | ⚠️ High cost | KBench: each case uses a different commit | Tiered: (commit,config) cache + dependency-closure scoped indexing; MVP: fixed snapshot |
 | Storage scale | ✅ SQLite handles it | Million-level occurrences | WAL + batch transactions + proper indexes + FTS5 |
 
