@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -87,13 +88,65 @@ def get_claude_permissions() -> list[str]:
 # JSON file helpers
 # ──────────────────────────────────────────────
 
+def _strip_jsonc(text: str) -> str:
+    """Strip JSONC syntax so stdlib ``json`` can parse it.
+
+    Removes ``//`` line comments, ``/* */`` block comments, and trailing
+    commas — the legal-in-JSONC constructs that make ``json.load`` fail
+    (e.g. an opencode.jsonc, or any agent config a user annotated).
+
+    A single-pass state machine skips comment markers *inside string
+    literals* (and honors ``\\"`` escapes), so a value like ``"http://x"``
+    is preserved. This is what stops read_json from returning ``{}`` on a
+    commented config and clobbering it on write.
+    """
+    out: list[str] = []
+    i, n = 0, len(text)
+    in_str = False
+    while i < n:
+        ch = text[i]
+        if in_str:
+            out.append(ch)
+            if ch == "\\" and i + 1 < n:        # escaped char — keep both
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if ch == '"':
+                in_str = False
+            i += 1
+            continue
+        if ch == '"':                            # enter string literal
+            in_str = True
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] == "/":     # line comment
+            while i < n and text[i] != "\n":
+                i += 1
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] == "*":     # block comment
+            i += 2
+            while i + 1 < n and not (text[i] == "*" and text[i + 1] == "/"):
+                i += 1
+            i += 2
+            continue
+        out.append(ch)
+        i += 1
+    # drop trailing commas before } or ]
+    return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
+
+
 def read_json(path: Path) -> dict:
-    """Read a JSON file, returning {} if absent or unparseable."""
+    """Read a JSON/JSONC file, returning {} if absent or unparseable.
+
+    JSONC (comments + trailing commas) is tolerated so an annotated agent
+    config isn't read as empty — which previously caused install to
+    overwrite the whole file with only the kgraph entry.
+    """
     if not path.exists():
         return {}
     try:
-        with open(path, "r") as f:
-            data = json.load(f)
+        data = json.loads(_strip_jsonc(path.read_text()))
         return data if isinstance(data, dict) else {}
     except (json.JSONDecodeError, OSError):
         return {}
