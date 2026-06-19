@@ -2,44 +2,44 @@
 
 # KGraph NPM Packaging Design
 
-> Goal: a single `npm install -g @ajksunkang-aios/kgraph` installs everything, and `kgraph init .` works out of the box.
+> 目标：`npm install -g @ajksunkang-aios/kgraph` 一条命令装好，`kgraph init .` 直接可用。
 
-## Overall Architecture
+## 整体架构
 
-Modeled on codegraph's **shim + platform bundle** pattern, but simplified to Linux-only:
+参考 codegraph 的 **shim + platform bundle** 模式，但简化为 Linux-only：
 
 ```
 npm install -g @ajksunkang-aios/kgraph
         │
         ▼
 ┌─────────────────────────────────────────────────────┐
-│  @ajksunkang-aios/kgraph (main package)             │
+│  @ajksunkang-aios/kgraph (主包)                       │
 │  package.json                                        │
 │  ├── bin: { "kgraph": "npm-shim.js" }               │
 │  ├── optionalDependencies:                           │
 │  │     @ajksunkang-aios/kgraph-linux-x64: "^x.y.z"  │
-│  └── npm-shim.js (thin shim, ~50 lines)             │
+│  └── npm-shim.js (薄壳，~50 行)                      │
 │         │                                            │
-│         ▼ runtime resolution                          │
-│  @ajksunkang-aios/kgraph-linux-x64 (platform package)│
-│  ├── python3.10          # standalone Python runtime │
+│         ▼ 运行时解析                                   │
+│  @ajksunkang-aios/kgraph-linux-x64 (平台包)           │
+│  ├── python3.10          # 独立 Python 运行时         │
 │  ├── lib/                                           │
-│  │   ├── site-packages/  # protobuf, mcp, etc.       │
-│  │   └── kgraph/         # KGraph source             │
+│  │   ├── site-packages/  # protobuf, mcp 等          │
+│  │   └── kgraph/         # KGraph 源码               │
 │  │       ├── src/                                   │
 │  │       ├── mcp/                                   │
 │  │       ├── scripts/                               │
 │  │       └── thirdparty/                            │
 │  ├── bin/                                           │
-│  │   ├── scip-clang      # scip-clang binary         │
-│  │   └── kgraph-launcher # shell launcher            │
+│  │   ├── scip-clang      # scip-clang 二进制          │
+│  │   └── kgraph-launcher # Shell 启动器               │
 │  └── package.json  { os: ["linux"], cpu: ["x64"] }  │
 └─────────────────────────────────────────────────────┘
 ```
 
-## Package Structure
+## 发布包结构
 
-### 1. Main package `@ajksunkang-aios/kgraph`
+### 1. 主包 `@ajksunkang-aios/kgraph`
 
 ```jsonc
 {
@@ -56,11 +56,11 @@ npm install -g @ajksunkang-aios/kgraph
 }
 ```
 
-- No `scripts` (no postinstall, no side effects)
-- `optionalDependencies` lets npm install only the package that matches the platform (filtered via os/cpu)
-- Currently only `linux-x64`; `linux-arm64` can be added later
+- 无 `scripts`（无 postinstall，无副作用）
+- `optionalDependencies` 让 npm 只装匹配平台的包（通过 os/cpu 过滤）
+- 目前只有 `linux-x64`，后续可加 `linux-arm64`
 
-### 2. Platform package `@ajksunkang-aios/kgraph-linux-x64`
+### 2. 平台包 `@ajksunkang-aios/kgraph-linux-x64`
 
 ```jsonc
 {
@@ -73,10 +73,10 @@ npm install -g @ajksunkang-aios/kgraph
 }
 ```
 
-- The `os` + `cpu` fields let npm automatically skip non-matching platforms
-- Ships a fully self-contained runtime, so users do not need to preinstall Python
+- `os` + `cpu` 字段让 npm 自动跳过不匹配的平台
+- 包含完整自包含运行时，用户无需预装 Python
 
-### 3. npm-shim.js (thin shim launcher)
+### 3. npm-shim.js（薄壳启动器）
 
 ```javascript
 #!/usr/bin/env node
@@ -85,14 +85,14 @@ const { execSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 
-// 1. Try to resolve the optionalDependencies platform package
+// 1. 尝试解析 optionalDependencies 平台包
 const platformPkg = '@ajksunkang-aios/kgraph-linux-x64';
 let bundleDir;
 try {
   bundleDir = path.dirname(require.resolve(`${platformPkg}/package.json`));
 } catch {}
 
-// 2. If the platform package is missing (e.g. npmmirror not mirroring it), download from GitHub Releases
+// 2. 如果平台包不存在（npmmirror 未镜像等），从 GitHub Releases 下载
 if (!bundleDir || !fs.existsSync(path.join(bundleDir, 'bin', 'kgraph-launcher'))) {
   const fallbackDir = path.join(os.homedir(), '.kgraph', 'bundles', 'latest');
   if (!fs.existsSync(path.join(fallbackDir, 'bin', 'kgraph-launcher'))) {
@@ -102,7 +102,7 @@ if (!bundleDir || !fs.existsSync(path.join(bundleDir, 'bin', 'kgraph-launcher'))
   bundleDir = fallbackDir;
 }
 
-// 3. exec the launcher, forwarding all arguments
+// 3. exec 启动器，透传所有参数
 const launcher = path.join(bundleDir, 'bin', 'kgraph-launcher');
 const result = spawnSync(launcher, process.argv.slice(2), {
   stdio: 'inherit',
@@ -111,7 +111,7 @@ const result = spawnSync(launcher, process.argv.slice(2), {
 process.exit(result.status ?? 1);
 ```
 
-### 4. kgraph-launcher (shell launcher)
+### 4. kgraph-launcher（Shell 启动器）
 
 ```bash
 #!/bin/bash
@@ -122,11 +122,11 @@ export PATH="$DIR/bin:$PATH"
 exec "$PYTHON" -m mcp.server "$@"
 ```
 
-## Build Process
+## 构建流程
 
 ### build-bundle.sh
 
-Runs on GitHub Actions (ubuntu-latest):
+在 GitHub Actions (ubuntu-latest) 上执行：
 
 ```bash
 #!/bin/bash
@@ -135,24 +135,24 @@ VERSION=$(jq -r .version package.json)
 BUNDLE_DIR="release/kgraph-linux-x64"
 mkdir -p "$BUNDLE_DIR"/{bin,lib/kgraph,lib/site-packages}
 
-# 1. Download standalone Python 3.10 (python-build-standalone project)
+# 1. 下载独立 Python 3.10 (python-build-standalone 项目)
 curl -fsSL https://github.com/indygreg/python-build-standalone/releases/download/20241016/\
 cpython-3.10.16+20241016-x86_64-unknown-linux-gnu-install_only.tar.gz \
   | tar xz --strip-components=1 -C "$BUNDLE_DIR"
 mv "$BUNDLE_DIR/bin/python3" "$BUNDLE_DIR/python"
 
-# 2. Install Python dependencies into site-packages
+# 2. 安装 Python 依赖到 site-packages
 "$BUNDLE_DIR/python" -m pip install --target "$BUNDLE_DIR/lib/site-packages" \
   "protobuf>=7.35.0,<8" mcp
 
-# 3. Copy KGraph source
+# 3. 复制 KGraph 源码
 cp -r src mcp scripts thirdparty "$BUNDLE_DIR/lib/kgraph/"
 
-# 4. Copy the scip-clang binary
+# 4. 复制 scip-clang 二进制
 cp scip-tools/scip-clang "$BUNDLE_DIR/bin/"
 chmod +x "$BUNDLE_DIR/bin/scip-clang"
 
-# 5. Generate the launcher
+# 5. 生成启动器
 cat > "$BUNDLE_DIR/bin/kgraph-launcher" << 'EOF'
 #!/bin/bash
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -160,19 +160,19 @@ exec "$DIR/python" "$@"
 EOF
 chmod +x "$BUNDLE_DIR/bin/kgraph-launcher"
 
-# 6. Pack
+# 6. 打包
 tar czf "release/kgraph-linux-x64-$VERSION.tar.gz" -C release kgraph-linux-x64
 ```
 
 ### pack-npm.sh
 
-Generates the npm publish structure:
+生成 npm 发布结构：
 
 ```bash
 #!/bin/bash
 VERSION=$1
 
-# Platform package
+# 平台包
 mkdir -p release/npm/linux-x64
 cp -r release/kgraph-linux-x64/* release/npm/linux-x64/
 cat > release/npm/linux-x64/package.json << EOF
@@ -185,7 +185,7 @@ cat > release/npm/linux-x64/package.json << EOF
 }
 EOF
 
-# Main package
+# 主包
 cp npm-shim.js release/npm/main/
 cat > release/npm/main/package.json << EOF
 {
@@ -200,7 +200,7 @@ cat > release/npm/main/package.json << EOF
 EOF
 ```
 
-## CI/CD Workflow
+## CI/CD 工作流
 
 ```yaml
 # .github/workflows/release.yml
@@ -238,40 +238,40 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 ```
 
-## Post-Install User Experience
+## 安装后的用户体验
 
 ```bash
 $ npm install -g @ajksunkang-aios/kgraph
 
-$ cd /path/to/linux   # kernel source directory
+$ cd /path/to/linux   # 内核源码目录
 
 $ kgraph init .
-# → uses the bundled Python + scip-clang; users do not need to preinstall anything
+# → 使用内置 Python + scip-clang，无需用户预装任何东西
 
-$ kgraph install      # configure the AI agent
+$ kgraph install      # 配置 AI agent
 
-$ kgraph serve        # start the MCP service
+$ kgraph serve        # 启动 MCP 服务
 ```
 
-## Differences from codegraph
+## 与 codegraph 的差异
 
 | | codegraph | kgraph |
 |---|---|---|
-| Language | TypeScript (Node.js) | Python |
-| Runtime | vendored Node 24 | vendored Python 3.10 (standalone) |
-| Platforms | 6 (darwin/linux/win × x64/arm64) | **1** (linux-x64) |
-| Native deps | none (WASM + node:sqlite) | scip-clang binary |
-| optionalDependencies | 6 platform packages | 1 platform package |
-| Complexity | high (multi-platform + fallback) | **low** (single platform, simple and direct) |
+| 语言 | TypeScript (Node.js) | Python |
+| 运行时 | vendored Node 24 | vendored Python 3.10 (standalone) |
+| 平台 | 6 个 (darwin/linux/win × x64/arm64) | **1 个** (linux-x64) |
+| 原生依赖 | 无 (WASM + node:sqlite) | scip-clang 二进制 |
+| optionalDependencies | 6 个平台包 | 1 个平台包 |
+| 复杂度 | 高 (多平台 + fallback) | **低** (单平台，简单直接) |
 
-## New Files Checklist
+## 新增文件清单
 
 ```
 KGraph/
-├── npm-shim.js                      # npm bin entry (thin shim)
+├── npm-shim.js                      # npm bin 入口（薄壳）
 ├── scripts/
-│   ├── build-bundle.sh              # build the platform bundle
-│   └── pack-npm.sh                  # generate the npm publish structure
+│   ├── build-bundle.sh              # 构建平台 bundle
+│   └── pack-npm.sh                  # 生成 npm 发布结构
 └── .github/workflows/
-    └── release.yml                  # release workflow
+    └── release.yml                  # 发布工作流
 ```

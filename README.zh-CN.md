@@ -441,7 +441,7 @@ pytest tests/unit/ -v                     # 仅单元测试
 KGRAPH_ROOT=/path/to/linux python tests/real/ingest_real.py
 ```
 
-完整测试设计与覆盖范围见 [`docs/TESTING.md`](docs/TESTING.md)。
+完整测试设计与覆盖范围见 [`docs/TESTING.zh-CN.md`](docs/TESTING.zh-CN.md)。
 
 ---
 

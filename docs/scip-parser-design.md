@@ -1,88 +1,90 @@
-# SCIP Protobuf 解析器设计思路
+[English](scip-parser-design.md) | [中文](scip-parser-design.zh-CN.md)
 
-> 供 review——只给思路和关键决策点，不写代码。
+# SCIP Protobuf Parser Design
 
-## 1. 要解析什么？
+> For review — only the approach and key decision points, no code yet.
 
-SCIP protobuf 的顶层结构是 `Index`：
+## 1. What are we parsing?
+
+The top-level structure of the SCIP protobuf is `Index`:
 
 ```
 Index
-  ├── Metadata          (1个：version, tool_info, project_root)
-  ├── Document[]        (N个：每个源文件一个)
+  ├── Metadata          (1: version, tool_info, project_root)
+  ├── Document[]        (N: one per source file)
   │     ├── relative_path
   │     ├── language
-  │     ├── Occurrence[]   ← 这是量大头（内核一个 defconfig ~百万级）
+  │     ├── Occurrence[]   ← the bulk of the data (a kernel defconfig is ~millions)
   │     │     ├── range / typed_range (single_line_range / multi_line_range)
-  │     │     ├── symbol (字符串，SCIP 全局符号名)
-  │     │     ├── symbol_roles (位掩码：Definition=0x1, Import=0x2, ...)
-  │     │     └── enclosing_range / typed_enclosing_range  ← ★调用图派生的关键
+  │     │     ├── symbol (string, the SCIP global symbol name)
+  │     │     ├── symbol_roles (bitmask: Definition=0x1, Import=0x2, ...)
+  │     │     └── enclosing_range / typed_enclosing_range  ← ★ key to call-graph derivation
   │     └── SymbolInformation[]
   │           ├── symbol, display_name, documentation[], kind
   │           ├── signature_documentation
   │           ├── enclosing_symbol
   │           └── Relationship[]
   │                 ├── symbol, is_reference, is_implementation, is_type_definition, is_definition
-  └── SymbolInformation[]  (external_symbols：定义在本次索引之外的符号)
+  └── SymbolInformation[]  (external_symbols: symbols defined outside this index)
 ```
 
-**核心量级**：Linux x86_64 defconfig 约 30k 文件，每文件数百 occurrence，总量 ~1-2M occurrence。
-SCIP protobuf 文件大小：~2-5GB（取决于是否内嵌源码文本）。
+**Core scale**: a Linux x86_64 defconfig is about 30k files, several hundred occurrences each, ~1-2M occurrences in total.
+SCIP protobuf file size: ~2-5GB (depending on whether source text is embedded).
 
-## 2. 解析方案选择
+## 2. Parsing approach
 
-### 方案对比
+### Option comparison
 
-| 方案 | 优点 | 缺点 | 适用场景 |
+| Option | Pros | Cons | Fit |
 |---|---|---|---|
-| **A: protobuf-c 生成的 C 代码 + 流式解析** | 零拷贝、内存可控、最快 | 需要先从 proto 生成 C 代码（依赖 protobuf-c 编译器）；代码量大 | libkgraph 的 C ingest 热点路径 |
-| **B: 手写 C 解析器（只解析需要的字段）** | 无外部依赖、只解析关心的字段、极轻量 | 手写 varint + tag 解析有出错风险；不兼容 proto 未来变更 | 如果要极致精简、不依赖 protobuf-c |
-| **C: Python protobuf 绑定（google.protobuf）** | 开箱即用、proto 生成代码一步到位；易调试 | 内存吃得多（整个 Index 一次加载 ~2-5GB）；慢 | MVP 验证 / 小子系统索引 / 原型 |
-| **D: Python 手写解析器（纯 struct 解码）** | 不依赖 proto 编译、可控流式 | 同 B 的手写风险；Python 本身慢 | 不推荐——Python 手写不如直接用 C |
+| **A: protobuf-c generated C code + streaming parse** | zero-copy, controllable memory, fastest | requires generating C from proto first (depends on the protobuf-c compiler); large code volume | C ingest hot path in libkgraph |
+| **B: hand-written C parser (parse only the fields we need)** | no external deps, parses only the fields of interest, extremely lightweight | hand-written varint + tag parsing is error-prone; does not tolerate future proto changes | if we want maximum minimalism and no protobuf-c dependency |
+| **C: Python protobuf bindings (google.protobuf)** | works out of the box, proto-generated code in one step; easy to debug | high memory use (loads the whole Index at once, ~2-5GB); slow | MVP validation / small subsystem indexing / prototype |
+| **D: hand-written Python parser (pure struct decoding)** | no proto compiler dependency, controllable streaming | same hand-written risk as B; Python itself is slow | not recommended — hand-written Python is worse than just using C |
 
-### 推荐：分阶段双轨
+### Recommendation: two-track, phased
 
-**MVP 阶段**：用 **方案 C（Python protobuf 绑定）** 快速跑通全链路。
-- `pip install protobuf`，从 `scip.proto` 生成 `scip_pb2.py`
-- Python 流式读（`Index` 的 `metadata` + 每个 `Document` 逐个处理）
-- 先跑通 fs/ext4，验证数据模型正确性
+**MVP phase**: use **Option C (Python protobuf bindings)** to get the full pipeline working quickly.
+- `pip install protobuf`, generate `scip_pb2.py` from `scip.proto`
+- Stream-read in Python (the `Index` `metadata` + each `Document` processed one by one)
+- Get fs/ext4 working first to validate the data model
 
-**生产阶段**：换成 **方案 A（protobuf-c + C 流式解析）** 做性能热点。
-- 从 `scip.proto` 生成 C 结构体（`protoc --c_out=scip.pb-c.h scip.pb-c.c`）
-- C 侧流式逐 Document 解析，批量写 SQLite
-- Python 通过 CFFI 调用或独立 CLI
+**Production phase**: switch to **Option A (protobuf-c + C streaming parse)** for the performance hot path.
+- Generate C structs from `scip.proto` (`protoc --c_out=scip.pb-c.h scip.pb-c.c`)
+- Stream-parse Document by Document on the C side, batch-write to SQLite
+- Python calls in via CFFI, or use a standalone CLI
 
-**不建议方案 B（手写）**：protobuf wire format 虽然简单（varint + tag-value），但 SCIP proto 有 100+ 个 enum 值、嵌套 oneof、deprecated 字段兼容——手写维护成本高于用 protobuf-c 生成。而且 proto 有版本演进，生成代码自动兼容，手写要自己维护。
+**Option B (hand-written) is not recommended**: the protobuf wire format is simple (varint + tag-value), but the SCIP proto has 100+ enum values, nested oneofs, and deprecated-field compatibility — hand-writing the maintenance cost exceeds that of using protobuf-c-generated code. The proto also evolves across versions; generated code stays compatible automatically, while hand-written code must be maintained by hand.
 
-## 3. 流式解析（关键：不能一次加载整个 Index）
+## 3. Streaming parsing (key: cannot load the whole Index at once)
 
-SCIP proto 的 `Index` 可达 5GB，不能 `Index.FromString(data)` 一次反序列化。
+The SCIP proto's `Index` can reach 5GB, so we cannot `Index.FromString(data)` deserialize it all at once.
 
-**protobuf 的天然优势**：proto3 的 wire format 是 tag-value 序列，每个字段独立编码。
-`Index` 的字段编号是：
+**Protobuf's natural advantage**: the proto3 wire format is a tag-value sequence, with each field encoded independently.
+The `Index` field numbers are:
 - `metadata = 1`
 - `documents = 2`
 - `external_symbols = 3`
 
-这意味着可以从字节流中**按 tag 逐字段提取**，每拿到一个 `Document` 就立即处理、释放内存。
+This means we can **extract fields one tag at a time** from the byte stream: process and release memory as soon as each `Document` arrives.
 
-### 3.1 C 侧流式解析（protobuf-c）
+### 3.1 C-side streaming parse (protobuf-c)
 
 ```c
-// 核心思路：不用 Index_unpack() 整体反序列化
-// 而是逐 tag 读取，每遇到一个 Document 就处理
+// Core idea: don't call Index_unpack() for a full deserialize.
+// Instead, read tag by tag, and process each Document as we encounter it.
 
 typedef struct {
     sqlite3 *db;
-    // 当前批次状态
+    // current batch state
     uint64_t current_file_id;
-    // 批量写缓冲
+    // batch write buffers
     symbol_batch_t symbols;
     occurrence_batch_t occurrences;
 } ingest_state_t;
 
 int ingest_scip_stream(ingest_state_t *state, const uint8_t *buf, size_t len) {
-    ProtobufCBufferSimple buffer;  // 或自定义 buffer
+    ProtobufCBufferSimple buffer;  // or a custom buffer
     size_t pos = 0;
 
     while (pos < len) {
@@ -92,14 +94,14 @@ int ingest_scip_stream(ingest_state_t *state, const uint8_t *buf, size_t len) {
 
         switch (field_number) {
         case 1:  // metadata
-            // 只读一次，记录 project_root / tool_info
+            // read once, record project_root / tool_info
             skip_or_read_metadata(buf, &pos, wire_type);
             break;
         case 2:  // documents
-            // ★核心：逐 Document 解析 + 立即处理
+            // ★ core: parse Document by Document + process immediately
             Document *doc = read_document_submessage(buf, &pos);
             process_document(state, doc);
-            protobuf_c_message_free_unpacked(doc, NULL);  // 立即释放
+            protobuf_c_message_free_unpacked(doc, NULL);  // free immediately
             break;
         case 3:  // external_symbols
             SymbolInformation *sym = read_symbol_info_submessage(buf, &pos);
@@ -110,26 +112,26 @@ int ingest_scip_stream(ingest_state_t *state, const uint8_t *buf, size_t len) {
             skip_field(buf, &pos, wire_type);
         }
     }
-    // 最终 flush 批量缓冲到 SQLite
+    // finally flush the batch buffers to SQLite
     flush_batches(state);
 }
 ```
 
-### 3.2 Python 侧流式解析（MVP）
+### 3.2 Python-side streaming parse (MVP)
 
 ```python
-# protobuf-c 生成的 Python 绑定不直接支持流式
-# 但可以用底层 wire-format API 手动逐 tag 读取
+# protobuf-c-generated Python bindings do not support streaming directly.
+# But we can manually read tag by tag via the low-level wire-format API.
 
-# 更实用的做法：利用 protobuf 的 MessageToDict + 分片
-# 或者用 scip-clang 自带的 Python bindings（如果有的话）
+# A more practical approach: use protobuf's MessageToDict + sharding,
+# or scip-clang's own Python bindings (if available).
 
-# MVP 最简方案：对 fs/ext4 小子系统，Index 不大，直接整体加载
+# Simplest MVP: for a small subsystem like fs/ext4, the Index is small enough to load whole.
 from scip_pb2 import Index
 
 with open("index.scip", "rb") as f:
     index = Index()
-    index.ParseFromString(f.read())  # 小子系统 OK
+    index.ParseFromString(f.read())  # OK for a small subsystem
 
 for doc in index.documents:
     for occ in doc.occurrences:
@@ -138,18 +140,18 @@ for doc in index.documents:
         process_symbol_info(sym_info)
 ```
 
-对于**全量内核**（5GB 级），Python 必须走流式：
+For the **full kernel** (5GB scale), Python must stream:
 ```python
-# 用 protobuf 底层解码器逐 tag 读
-# 或者更实际：把 index.scip 按 Document 边界切片（SCIP proto 的
-# repeated Document 是连续 tag=2 的子消息，可按长度前缀切割）
+# Read tag by tag via protobuf's low-level decoder,
+# or more practically: slice index.scip on Document boundaries (the SCIP proto's
+# repeated Document is a run of contiguous tag=2 submessages, cuttable by length prefix).
 
 def stream_documents(filepath):
-    """从 index.scip 中逐 Document 流式读取"""
+    """Stream Documents one by one from index.scip."""
     with open(filepath, "rb") as f:
-        # 1. 先读 metadata (tag=1)
-        # 2. 循环读 Document (tag=2)
-        # 3. 最后读 external_symbols (tag=3)
+        # 1. read metadata first (tag=1)
+        # 2. loop reading Documents (tag=2)
+        # 3. read external_symbols last (tag=3)
         while True:
             tag, wire_type = read_tag(f)
             field_num = tag >> 3
@@ -165,7 +167,7 @@ def stream_documents(filepath):
                 raw = f.read(msg_len)
                 meta = Metadata()
                 meta.ParseFromString(raw)
-                # 记录 project_root 等
+                # record project_root etc.
             elif field_num == 3:
                 # external_symbols
                 ...
@@ -173,42 +175,42 @@ def stream_documents(filepath):
                 skip_field(f, wire_type)
 ```
 
-## 4. 从 SCIP 到 SQLite 的映射逻辑
+## 4. Mapping logic from SCIP to SQLite
 
-### 4.1 一次 Document 的处理流程
+### 4.1 Processing flow for a single Document
 
 ```
 Document(relative_path="fs/ext4/file.c")
   │
-  ├── Step 1: 写入 files 表
+  ├── Step 1: write the files table
   │     files(path="fs/ext4/file.c", language="C")
-  │     → 得到 file_id
+  │     → get file_id
   │
-  ├── Step 2: 处理 SymbolInformation[]
+  ├── Step 2: process SymbolInformation[]
   │     for each sym_info in doc.symbols:
-  │       ├── scip_symbol → symbols 表 (name, kind, signature, documentation)
-  │       ├── display_name → symbols.name (fallback 用 symbol 解析出的 name)
-  │       ├── kind enum → symbols.kind 映射：
+  │       ├── scip_symbol → symbols table (name, kind, signature, documentation)
+  │       ├── display_name → symbols.name (fallback to the name parsed from symbol)
+  │       ├── kind enum → symbols.kind mapping:
   │       │     Function/Method/Constructor → "function"
   │       │     Struct/Class/Interface → "struct"
   │       │     Field → "field"
   │       │     Macro → "macro"
   │       │     TypeAlias/Typedef → "typedef"
   │       │     Variable/Constant → "global_var"
-  │       │     其他 → 按需扩展
+  │       │     others → extend as needed
   │       ├── signature_documentation.text → symbols.signature
-  │       ├── enclosing_symbol → 记录，用于 occurrence 的 enclosing 映射
-  │       └── Relationship[] → edges 表（is_implementation, is_reference 等）
-  │            关系类型映射：
-  │            is_implementation → type "implements" (后可改为 ops_bind 判断)
+  │       ├── enclosing_symbol → record, used for occurrence enclosing mapping
+  │       └── Relationship[] → edges table (is_implementation, is_reference, etc.)
+  │            relationship type mapping:
+  │            is_implementation → type "implements" (may later change to ops_bind judgment)
   │            is_reference → type "references"
   │            is_type_definition → type "type_of"
   │            is_definition → type "defines"
   │
-  ├── Step 3: 处理 Occurrence[]
+  ├── Step 3: process Occurrence[]
   │     for each occ in doc.occurrences:
-  │       ├── symbol → 查 symbols 表得 symbol_id（或先缓存 dict）
-  │       ├── symbol_roles 位掩码解析：
+  │       ├── symbol → look up the symbols table for symbol_id (or cache a dict first)
+  │       ├── symbol_roles bitmask parse:
   │       │     Definition (0x1) → role=1
   │       │     Import (0x2) → role=2
   │       │     WriteAccess (0x4) → role=4
@@ -217,39 +219,39 @@ Document(relative_path="fs/ext4/file.c")
   │       ├── range → start_line, start_col, end_line, end_col
   │       │     typed_range: single_line_range → (line, start, end)
   │       │     typed_range: multi_line_range → (s_line, s_col, e_line, e_col)
-  │       │     deprecated range[3]: → (line, start, end) 同行
+  │       │     deprecated range[3]: → (line, start, end) same line
   │       │     deprecated range[4]: → (s_line, s_col, e_line, e_col)
-  │       ├── enclosing_range → ★关键！
-  │       │     解析出 enclosing 的 line range
-  │       │     查：哪个 SymbolInformation 的 definition range 覆盖此 enclosing range
-  │       │     → 得到 enclosing_symbol_id
-  │       │     写入 occurrences.enclosing_symbol_id
+  │       ├── enclosing_range → ★ key!
+  │       │     parse the enclosing line range
+  │       │     look up: which SymbolInformation's definition range covers this enclosing range
+  │       │     → get enclosing_symbol_id
+  │       │     write to occurrences.enclosing_symbol_id
   │       │
-  │       │  ★注意：enclosing_range 在 definition occurrence 上表示
-  │       │    "整个定义的范围"，在 reference occurrence 上表示
-  │       │    "引用落在哪个父 AST 节点内"。后者是调用图派生的核心。
+  │       │  ★ Note: on a definition occurrence, enclosing_range means
+  │       │    "the whole definition's range"; on a reference occurrence it means
+  │       │    "which parent AST node the reference falls inside". The latter is core to call-graph derivation.
   │       │
-  │       └── 写入 occurrences 表
+  │       └── write the occurrences table
   │
-  └── Step 4: 派生调用图边（在同一 Document 内完成）
-        for each occ where symbol_roles & Reference 且 enclosing_symbol_id != NULL:
-          edge_type = "calls"  (如果被引用符号是 function/method)
-          edge_type = "references" (如果是 struct/field/macro 等)
-          写入 edges(src=enclosing_symbol, dst=referenced_symbol, type, file, line)
+  └── Step 4: derive call-graph edges (completed within the same Document)
+        for each occ where symbol_roles & Reference and enclosing_symbol_id != NULL:
+          edge_type = "calls"  (if the referenced symbol is a function/method)
+          edge_type = "references" (if it's a struct/field/macro, etc.)
+          write edges(src=enclosing_symbol, dst=referenced_symbol, type, file, line)
 ```
 
-### 4.2 Symbol 名称解析（SCIP 符号串 → 我们需要的元数据）
+### 4.2 Symbol name parsing (SCIP symbol string → the metadata we need)
 
-SCIP symbol 字符串格式（来自 proto 注释）：
+The SCIP symbol string format (from the proto comment):
 ```
 <scheme> ' ' <package> ' ' <descriptor>+
-例：scip clang c linux v6.12 ext4_file_operations#read_iter().
+e.g.: scip clang c linux v6.12 ext4_file_operations#read_iter().
 ```
 
-**解析规则**：
-- scheme: `scip`（clang indexer 的 scheme）
-- package: `clang c linux v6.12`（manager=`clang`, name=`c`, version=`linux v6.12`）
-- descriptors: 串联解析，每个 descriptor 的 suffix 决定类型：
+**Parsing rules**:
+- scheme: `scip` (the clang indexer's scheme)
+- package: `clang c linux v6.12` (manager=`clang`, name=`c`, version=`linux v6.12`)
+- descriptors: parse in sequence; each descriptor's suffix determines its type:
   - `/` → namespace
   - `#` → type (struct/class)
   - `.` → term (variable/field)
@@ -259,33 +261,33 @@ SCIP symbol 字符串格式（来自 proto 注释）：
   - `[]` → type parameter
   - `()` → parameter
 
-**我们需要从 symbol 串提取**：
-1. **短名**（最后一个 descriptor 的 name）→ `symbols.name`
-2. **kind**（最后一个 descriptor 的 suffix）→ 映射到我们的 kind
-3. **enclosing symbol**（去掉最后一个 descriptor 的前缀串）→ 关联父符号
+**What we need to extract from the symbol string**:
+1. **short name** (the last descriptor's name) → `symbols.name`
+2. **kind** (the last descriptor's suffix) → map to our kind
+3. **enclosing symbol** (the prefix string with the last descriptor removed) → associate the parent symbol
 
 ```
 "scip clang c linux v6.12 ext4_file_operations#read_iter()."
   → name = "read_iter"
-  → kind = "function"  (suffix 是 ().  = Method)
+  → kind = "function"  (suffix is ().  = Method)
   → enclosing = "scip clang c linux v6.12 ext4_file_operations#"  (struct)
 ```
 
-### 4.3 ops_bind 派生（核心差异化逻辑）
+### 4.3 ops_bind derivation (core differentiating logic)
 
-**触发条件**：一个 occurrence 的 enclosing symbol 的 kind 是 `global_var`，
-且被引用符号的 kind 是 `function`，且 enclosing symbol 的名字匹配
-`*_operations / *_ops / *_handler / *_table` 模式。
+**Trigger condition**: an occurrence's enclosing symbol has kind `global_var`,
+the referenced symbol's kind is `function`, and the enclosing symbol's name matches
+the `*_operations / *_ops / *_handler / *_table` pattern.
 
 ```c
-// 伪代码
+// pseudocode
 if (enclosing_sym.kind == "global_var" &&
     match_ops_pattern(enclosing_sym.name) &&
     referenced_sym.kind == "function") {
-    // 从 symbol 串或 occurrence 上下文提取字段名
-    // 方法1: 从 SCIP Relationship 中看是否有 is_implementation 关系
-    // 方法2: 从符号名推断 (.read_iter = ext4_file_read_iter)
-    //         → 字段名 = referenced_sym.name 如果能和 enclosing 的类型字段对上
+    // extract the field name from the symbol string or occurrence context
+    // method 1: check the SCIP Relationship for an is_implementation relation
+    // method 2: infer from the symbol name (.read_iter = ext4_file_read_iter)
+    //           → field_name = referenced_sym.name if it lines up with a field of the enclosing type
 
     write_edge(enclosing_sym_id, referenced_sym_id,
                "ops_bind", file_id, line,
@@ -294,64 +296,64 @@ if (enclosing_sym.kind == "global_var" &&
 }
 ```
 
-**更精确的方法**（推荐）：利用 SCIP `SymbolInformation` 的 `Relationship`。
-如果 `SymbolInformation` 的 kind 是 `Field`，且它的 `Relationship` 里
-有 `is_definition=true` 关联到某个函数——这就是 ops_bind。
+**A more precise method** (recommended): use the SCIP `SymbolInformation`'s `Relationship`.
+If a `SymbolInformation` has kind `Field` and its `Relationship` has an `is_definition=true`
+link to some function — that is an ops_bind.
 
-## 5. 性能关键点
+## 5. Performance hotspots
 
-| 环节 | 预估量级 | 性能策略 |
+| Stage | Estimated scale | Performance strategy |
 |---|---|---|
-| protobuf 解析 | ~2-5GB 原始字节 | 流式逐 Document，不整体加载；C 侧零拷贝解析 |
-| symbol 名称字典 | ~30 万条 | ingest 阶段维护内存 dict（scip_symbol→symbol_id），避免每条 occurrence 都查 SQLite |
-| occurrence 写入 | ~1-2M 条 | 批量 INSERT（每 10k 条一次事务）；SQLite WAL 模式 |
-| enclosing 匹配 | 同一 Document 内 | 每个 Document 处理完立即做 enclosing 匹配（Document 内所有定义 occurrence 构建 range→symbol_id 索引，然后给 reference occurrence 查 enclosing） |
-| ops_bind 派生 | ~数千条 | 在 occurrence 处理阶段标记候选，Document 处理完后批量写入 |
+| protobuf parse | ~2-5GB raw bytes | stream Document by Document, no whole load; zero-copy parse on the C side |
+| symbol name dict | ~300k entries | maintain an in-memory dict during ingest (scip_symbol→symbol_id), avoid hitting SQLite for every occurrence |
+| occurrence write | ~1-2M entries | batch INSERT (one transaction per 10k entries); SQLite WAL mode |
+| enclosing match | within the same Document | do the enclosing match as soon as each Document is processed (build a range→symbol_id index over all definition occurrences in the Document, then look up enclosing for each reference occurrence) |
+| ops_bind derivation | ~thousands of entries | flag candidates during the occurrence pass, batch-write after the Document is processed |
 
-**预估吞吐**：
-- Python MVP（fs/ext4，~5k 文件）：数分钟可接受
-- C 生产版（全量内核，30k 文件）：目标 < 10 分钟
+**Estimated throughput**:
+- Python MVP (fs/ext4, ~5k files): a few minutes is acceptable
+- C production build (full kernel, 30k files): target < 10 minutes
 
-## 6. 技术依赖与构建流程
+## 6. Tech dependencies and build flow
 
-### MVP（Python）
+### MVP (Python)
 
 ```bash
-# 1. 从 scip.proto 生成 Python 绑定
+# 1. generate Python bindings from scip.proto
 pip install protobuf grpcio-tools
 protoc --python_out=src/kgraph/scip scip.proto
-# → 生成 src/kgraph/scip/scip_pb2.py
+# → generates src/kgraph/scip/scip_pb2.py
 
-# 2. Python 解析脚本
-# src/kgraph/ingest.py — 读 index.scip → 写 SQLite
+# 2. Python parse script
+# src/kgraph/ingest.py — reads index.scip → writes SQLite
 ```
 
-### 生产（C）
+### Production (C)
 
 ```bash
-# 1. 安装 protobuf-c
+# 1. install protobuf-c
 # macOS: brew install protobuf-c
 # Linux: apt install libprotobuf-c-dev
 
-# 2. 从 scip.proto 生成 C 绑定
+# 2. generate C bindings from scip.proto
 protoc --c_out=src/libkgraph/scip scip.proto
-# → 生成 scip.pb-c.h, scip.pb-c.c
+# → generates scip.pb-c.h, scip.pb-c.c
 
-# 3. C ingest 库
-# src/libkgraph/ingest.c — 流式读 index.scip → 批量写 SQLite
-# 编译: gcc -O2 -lprotobuf-c -lsqlite3 ingest.c scip.pb-c.c -o libkgraph.so
+# 3. C ingest library
+# src/libkgraph/ingest.c — streams index.scip → batch-writes SQLite
+# build: gcc -O2 -lprotobuf-c -lsqlite3 ingest.c scip.pb-c.c -o libkgraph.so
 ```
 
-## 7. 需要你 Review 的决策点
+## 7. Decision points to review
 
-| # | 决策 | 我的倾向 | 替代 | 备注 |
+| # | Decision | My lean | Alternative | Notes |
 |---|---|---|---|---|
-| R1 | MVP 解析器语言 | **Python protobuf 绑定**（快跑通） | 直接写 C | Python 先验证数据模型，C 后续替换 |
-| R2 | 流式 vs 整体加载 | **小子系统整体加载，全量流式** | 全量也整体加载（要 ~5GB RAM） | fs/ext4 的 index.scip 大约 50-100MB，整体加载没问题 |
-| R3 | symbol 名称解析 | **Python 正则解析 SCIP 符号串** | 用 SCIP 自带的 Symbol 类（proto 里有 `Symbol` message） | SCIP proto 有 `Symbol` message 结构（scheme + package + descriptors），但 scip-clang 输出的是字符串形式的 symbol，需要自己解析 |
-| R4 | enclosing 匹配算法 | **同一 Document 内定义 occurrence 的 range → symbol 索引** | 跨 Document 全局匹配 | 定义和引用通常在同一 Document 内；跨 Document 的 enclosing 极少（C 头文件 inline 函数可能跨） |
-| R5 | ops_bind 派生触发 | **基于 global_var 名称模式匹配 + kind 判断** | 基于 SymbolInformation.Relationship 的 is_implementation | 两种互补：Relationship 更精确但可能不全；名称模式覆盖面更广但需要维护 pattern 列表 |
-| R6 | deprecated range 字段兼容 | **同时支持 typed_range 和 deprecated range** | 只支持 typed_range | scip-clang 当前版本可能还用 deprecated range；需要兼容两种编码 |
+| R1 | MVP parser language | **Python protobuf bindings** (get it running fast) | write C directly | validate the data model in Python first, swap in C later |
+| R2 | streaming vs whole load | **whole load for small subsystems, streaming for full** | whole load even for full (~5GB RAM) | fs/ext4's index.scip is about 50-100MB, whole load is fine |
+| R3 | symbol name parsing | **Python regex parse of the SCIP symbol string** | use SCIP's built-in Symbol class (the proto has a `Symbol` message) | the SCIP proto has a `Symbol` message structure (scheme + package + descriptors), but scip-clang outputs symbol in string form, which we have to parse ourselves |
+| R4 | enclosing match algorithm | **range→symbol index over definition occurrences within the same Document** | cross-Document global match | definitions and references are usually in the same Document; cross-Document enclosing is rare (C header inline functions might cross) |
+| R5 | ops_bind derivation trigger | **name-pattern match on global_var + kind check** | based on SymbolInformation.Relationship's is_implementation | the two are complementary: Relationship is more precise but may be incomplete; name patterns cover more but require maintaining a pattern list |
+| R6 | deprecated range field compat | **support both typed_range and deprecated range** | support only typed_range | the current scip-clang version may still use deprecated range; both encodings must be supported |
 
 Sources:
 - [SCIP Protocol - github.com/sourcegraph/scip](https://github.com/sourcegraph/scip)

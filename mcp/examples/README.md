@@ -1,65 +1,71 @@
-# KGraph MCP — 各 AI Agent 配置示例
+[English](README.md) | [中文](README.zh-CN.md)
 
-手动注册 KGraph MCP 服务到各 AI agent 的配置示例。
-每个文件包含**配置文件路径**、**格式说明**和**可直接复制的配置块**。
+# KGraph MCP — Configuration Examples for AI Agents
 
-> 推荐用 `kgraph install` 自动配置（见根目录 README）。
-> 本目录用于手动配置，或自动配置失败时参考。
+Manual configuration examples for registering the KGraph MCP server with each AI
+agent. Every file documents the **config file path**, **format**, and a
+**ready-to-copy config block**.
 
-## 快速索引
+> Prefer auto-configuration via `kgraph install` (see the root README).
+> Use this directory for manual setup, or as a reference when auto-config fails.
 
-| Agent | 示例文件 | 配置文件路径 | 格式 |
+## Quick Index
+
+| Agent | Example file | Config file path | Format |
 |---|---|---|---|
-| **Claude Code** | [`claude.example.json`](claude.example.json) | `~/.claude.json`（全局）/ `./.mcp.json`（项目） | JSON `mcpServers` |
-| → 权限（可选） | [`claude-permissions.example.json`](claude-permissions.example.json) | `~/.claude/settings.json` | JSON `permissions.allow` |
-| **Cursor** | [`cursor.example.json`](cursor.example.json) | `~/.cursor/mcp.json`（全局）/ `./.cursor/mcp.json`（项目） | JSON `mcpServers` |
-| **Codex CLI** | [`codex.example.toml`](codex.example.toml) | `~/.codex/config.toml`（仅全局） | TOML `[mcp_servers.kgraph]` |
-| **opencode** | [`opencode.example.jsonc`](opencode.example.jsonc) | `~/.config/opencode/opencode.json`（全局）/ `./opencode.json`（项目） | JSONC `mcp.kgraph` |
-| **Hermes Agent** | [`hermes.example.yaml`](hermes.example.yaml) | `$HERMES_HOME/config.yaml`（默认 `~/.hermes/config.yaml`，仅全局） | YAML `mcp_servers` + `platform_toolsets` |
+| **Claude Code** | [`claude.example.json`](claude.example.json) | `~/.claude.json` (global) / `./.mcp.json` (project) | JSON `mcpServers` |
+| → Permissions (optional) | [`claude-permissions.example.json`](claude-permissions.example.json) | `~/.claude/settings.json` | JSON `permissions.allow` |
+| **Cursor** | [`cursor.example.json`](cursor.example.json) | `~/.cursor/mcp.json` (global) / `./.cursor/mcp.json` (project) | JSON `mcpServers` |
+| **Codex CLI** | [`codex.example.toml`](codex.example.toml) | `~/.codex/config.toml` (global only) | TOML `[mcp_servers.kgraph]` |
+| **opencode** | [`opencode.example.jsonc`](opencode.example.jsonc) | `~/.config/opencode/opencode.json` (global) / `./opencode.json` (project) | JSONC `mcp.kgraph` |
+| **Hermes Agent** | [`hermes.example.yaml`](hermes.example.yaml) | `$HERMES_HOME/config.yaml` (default `~/.hermes/config.yaml`, global only) | YAML `mcp_servers` + `platform_toolsets` |
 
-## 通用步骤
+## General Steps
 
-1. 找到你的 agent 对应的示例文件
-2. 把示例中的占位路径改成你机器上的真实路径：
-   - `command` → KGraph venv python（`/path/to/KGraph/.venv/bin/python`）
-   - `args` → `KGraph/mcp/server.py` 的路径
-   - `KGRAPH_ROOT` → 你索引的内核源码树（`.kgraph/` 所在目录）
-   - `KGRAPH_DB` → 该树的 `.kgraph/kgraph.db`
-3. 把配置块**合并**进对应的配置文件（不要覆盖你已有的其他 MCP server）
-4. 重启 agent，使 MCP 服务加载
+1. Find the example file for your agent
+2. Replace the placeholder paths with the real paths on your machine:
+   - `command` → KGraph venv python (`/path/to/KGraph/.venv/bin/python`)
+   - `args` → path to `KGraph/mcp/server.py`
+   - `KGRAPH_ROOT` → your indexed kernel source tree (the dir containing `.kgraph/`)
+   - `KGRAPH_DB` → that tree's `.kgraph/kgraph.db`
+3. **Merge** the config block into the corresponding config file (don't overwrite
+   your other MCP servers)
+4. Restart your agent so the MCP server loads
 
-## 两种启动方式
+## Two Launch Modes
 
-**方式一：直接用 venv python 启动 server.py（开发 / 未装 PATH）**
+**Mode 1: launch `server.py` directly with the venv python (dev / not on PATH)**
 ```
 command: /path/to/KGraph/.venv/bin/python
 args:    [/path/to/KGraph/mcp/server.py]
 ```
 
-**方式二：用 PATH 上的 kgraph 命令（已通过 install.sh 安装）**
+**Mode 2: use the `kgraph` command on PATH (installed via install.sh)**
 ```
 command: kgraph
 args:    [serve, --mcp]
 ```
 
-两种方式都需要 `KGRAPH_ROOT` / `KGRAPH_DB` 环境变量指向你的内核索引。
+Both modes require the `KGRAPH_ROOT` / `KGRAPH_DB` env vars to point at your
+kernel index.
 
-## 配置形态差异速查
+## Config Shape Cheat Sheet
 
 | | Claude / Cursor | Codex | opencode | Hermes |
 |---|---|---|---|---|
-| 顶层键 | `mcpServers` | `[mcp_servers.x]` | `mcp.x` | `mcp_servers.x` |
-| command | 字符串 | 字符串 | **字符串数组**（含 args） | 字符串 |
-| 环境变量键 | `env` | `env` | **`environment`** | `env` |
-| 额外要求 | 权限文件（可选） | 仅全局 | `enabled: true` | 需加 `platform_toolsets.cli: - mcp-kgraph` |
+| Top-level key | `mcpServers` | `[mcp_servers.x]` | `mcp.x` | `mcp_servers.x` |
+| command | string | string | **string array** (incl. args) | string |
+| Env-var key | `env` | `env` | **`environment`** | `env` |
+| Extra requirements | permissions file (optional) | global only | `enabled: true` | add `platform_toolsets.cli: - mcp-kgraph` |
 
-## 验证
+## Verify
 
-配置后，在 agent 里问一个结构性问题确认 MCP 工具已加载：
+After configuring, ask your agent a structural question to confirm the MCP tools
+loaded:
 
 ```
-> 用 kgraph 查 ext4_file_read_iter 的所有调用者
-> kgraph 里 read_iter 有哪些实现？
+> Use kgraph to list all callers of ext4_file_read_iter
+> What implementations of read_iter are there in kgraph?
 ```
 
-或直接调 `index_status` 工具看索引统计。
+Or call the `index_status` tool directly to see index statistics.
