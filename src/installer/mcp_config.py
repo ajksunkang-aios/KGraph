@@ -72,7 +72,7 @@ def get_command_array(project_root: Path | None = None) -> list[str]:
 # Claude permission entries to auto-allow (one per MCP tool).
 KGRAPH_TOOLS = [
     "search_symbols", "get_symbol", "get_function_body",
-    "find_callers", "find_callees", "call_path",
+    "find_callers", "find_callees", "call_path", "get_callchain",
     "find_references", "find_type_definition", "get_struct_layout",
     "find_ops_impls", "get_neighborhood", "index_status",
 ]

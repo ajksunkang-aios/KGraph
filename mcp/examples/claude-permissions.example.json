@@ -19,6 +19,7 @@
       "mcp__kgraph__find_callers",
       "mcp__kgraph__find_callees",
       "mcp__kgraph__call_path",
+      "mcp__kgraph__get_callchain",
       "mcp__kgraph__find_references",
       "mcp__kgraph__find_type_definition",
       "mcp__kgraph__get_struct_layout",
