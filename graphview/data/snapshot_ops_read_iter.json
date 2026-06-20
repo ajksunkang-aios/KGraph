@@ -15,7 +15,7 @@
     "ops_symbol": "cxx . . $ null_fops.",
     "impl_symbol": "cxx . . $ read_iter_null(c5f3e27501c4297d).",
     "file_path": "drivers/char/mem.c",
-    "line": 663,
+    "line": 650,
     "field_name": "read_iter_null",
     "confidence": 0.5
   },
@@ -25,7 +25,7 @@
     "ops_symbol": "cxx . . $ zero_fops.",
     "impl_symbol": "cxx . . $ read_iter_zero(c5f3e27501c4297d).",
     "file_path": "drivers/char/mem.c",
-    "line": 681,
+    "line": 668,
     "field_name": "read_iter_zero",
     "confidence": 0.5
   },
@@ -35,7 +35,7 @@
     "ops_symbol": "cxx . . $ full_fops.",
     "impl_symbol": "cxx . . $ read_iter_zero(c5f3e27501c4297d).",
     "file_path": "drivers/char/mem.c",
-    "line": 695,
+    "line": 682,
     "field_name": "read_iter_zero",
     "confidence": 0.5
   },
@@ -145,7 +145,7 @@
     "ops_symbol": "cxx . . $ shmem_file_operations.",
     "impl_symbol": "cxx . . $ shmem_file_read_iter(c5f3e27501c4297d).",
     "file_path": "mm/shmem.c",
-    "line": 5206,
+    "line": 5143,
     "field_name": "shmem_file_read_iter",
     "confidence": 0.5
   },
