@@ -60,6 +60,9 @@ def _bold(text: str) -> str:
 def _red(text: str) -> str:
     return f"\033[31m{text}\033[0m" if sys.stdout.isatty() else text
 
+def _dim(text: str) -> str:
+    return f"\033[2m{text}\033[0m" if sys.stdout.isatty() else text
+
 
 def _find_scip_clang(custom_path: str | None) -> str:
     """Locate the scip-clang binary.
@@ -105,40 +108,54 @@ def _run_scip_clang(scip_clang: str, compdb_path: Path, output_dir: Path) -> Pat
     print(f"  binary:  {scip_clang}")
     print(f"  compdb:  {compdb_path}")
     print(f"  output:  {scip_output}")
+    print(_dim("  streaming scip-clang progress below — indexing is the long step, not a hang"))
+    print()
 
     t0 = time.time()
+    captured: list[str] = []
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
             cwd=str(output_dir),
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # merge stderr in → all progress streams live
             text=True,
-            timeout=3600,  # 1 hour max
+            bufsize=1,                # line-buffered
         )
     except FileNotFoundError:
         print(_red(f"ERROR: Cannot execute scip-clang: {scip_clang}"))
         print("  scip-clang is a Linux x86-64 binary. Are you running on Linux?")
         sys.exit(1)
+
+    # Forward scip-clang's output line-by-line so the user sees indexing
+    # progress instead of a silent hang (scip-clang logs progress to stderr,
+    # merged into stdout above). Also accumulate it for error reporting.
+    assert proc.stdout is not None
+    try:
+        for line in proc.stdout:
+            sys.stdout.write(f"  {line}")
+            sys.stdout.flush()
+            captured.append(line)
+        proc.wait(timeout=3600)  # 1 hour max
     except subprocess.TimeoutExpired:
+        proc.kill()
         print(_red("ERROR: scip-clang timed out after 1 hour."))
         sys.exit(1)
 
     elapsed = time.time() - t0
+    output = "".join(captured)
 
-    if result.returncode != 0:
-        print(_red(f"ERROR: scip-clang exited with code {result.returncode}"))
-        if result.stderr:
-            # Print last 20 lines of stderr
-            lines = result.stderr.strip().split("\n")
-            for line in lines[-20:]:
+    if proc.returncode != 0:
+        print(_red(f"ERROR: scip-clang exited with code {proc.returncode}"))
+        if output:
+            for line in output.strip().split("\n")[-20:]:
                 print(f"  {line}")
         sys.exit(1)
 
     if not scip_output.exists():
         print(_red("ERROR: scip-clang completed but index.scip was not produced."))
-        if result.stderr:
-            lines = result.stderr.strip().split("\n")
-            for line in lines[-10:]:
+        if output:
+            for line in output.strip().split("\n")[-10:]:
                 print(f"  {line}")
         sys.exit(1)
 
