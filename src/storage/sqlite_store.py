@@ -240,6 +240,27 @@ class SQLiteStore(GraphStore):
         """Final commit and index optimization."""
         self.conn.commit()
 
+        # Cross-document contains recovery. The parser's Step 6 derives
+        # struct→field containment only within a single Document (it checks
+        # the current Document's symbol_map). When a struct and its fields
+        # land in different Documents — common in real scip-clang output —
+        # those contains edges are missed and get_struct_layout returns
+        # empty (the prepend_buffer failure). Recover them here from
+        # symbols.enclosing_symbol (populated for every field from its
+        # symbol name), now that all symbols are in the DB. INSERT OR IGNORE
+        # dedupes against Step 6's same-Document edges (composite PK
+        # src_id,dst_id,type,file_id,line).
+        self.conn.execute(
+            """
+            INSERT OR IGNORE INTO edges (src_id, dst_id, type, file_id, line, weight, confidence)
+            SELECT s.id, f.id, 'contains', f.def_file_id, f.def_start_line, 1, 1.0
+            FROM symbols f
+            JOIN symbols s ON f.enclosing_symbol = s.scip_symbol
+            WHERE f.enclosing_symbol != '' AND f.kind = 'field'
+            """
+        )
+        self.conn.commit()
+
         # Optimize FTS
         self.conn.execute("INSERT INTO symbols_fts(symbols_fts) VALUES ('optimize')")
         self.conn.commit()
