@@ -244,6 +244,35 @@ def _ingest(scip_path: Path, db_path: Path) -> None:
 # CLI entry point
 # ──────────────────────────────────────────────
 
+def _print_next_steps() -> None:
+    """Print what to do after a successful `kgraph init`.
+
+    `kgraph install` (wire the MCP server into AI agents) and `kgraph init`
+    (build the graph) are independent — either may run first. So only
+    suggest install when no agent is configured yet; otherwise just remind
+    the user to restart their agent so it picks up the refreshed graph.
+    """
+    configured = []
+    try:
+        from installer import detect as _detect_agents
+        configured = [d for d in _detect_agents("global")
+                      if d.result.already_configured]
+    except Exception:
+        pass
+
+    print()
+    print(_green("✅ Done.") + " Graph written to .kgraph/kgraph.db.")
+    if configured:
+        names = ", ".join(d.target.display_name for d in configured)
+        print(f"  KGraph is already wired into {names}.")
+        print(_green("Next:") + " restart your agent to load the refreshed KGraph tools.")
+    else:
+        print(_green("Next steps:"))
+        print(f"  1. kgraph install          # wire KGraph into your AI agent")
+        print(f"  2. Restart your agent       # load KGraph MCP tools")
+        print(_dim("  (kgraph install and kgraph init are independent — either order works)"))
+
+
 def cmd_init(argv: list[str] | None = None) -> int:
     """`kgraph init` subcommand handler."""
     parser = argparse.ArgumentParser(
@@ -325,10 +354,7 @@ def cmd_init(argv: list[str] | None = None) -> int:
 
     _ingest(scip_output, db_path)
 
-    print()
-    print(_green("✅ Done. Next steps:"))
-    print(f"  1. kgraph install          # configure your AI agent")
-    print(f"  2. Restart your agent       # load KGraph MCP tools")
+    _print_next_steps()
 
     return 0
 
