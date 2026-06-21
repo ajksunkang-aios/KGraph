@@ -74,9 +74,9 @@ cat > "${NPM_DIR}/main/package.json" << EOF
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ajksunkang/KGraph.git"
+    "url": "https://github.com/ajksunkang-aios/KGraph.git"
   },
-  "homepage": "https://github.com/ajksunkang/KGraph#readme"
+  "homepage": "https://github.com/ajksunkang-aios/KGraph#readme"
 }
 EOF
 

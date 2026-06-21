@@ -19,7 +19,7 @@ const PKG = '@ajksunkang-aios/kgraph-linux-x64';
 const LAUNCHER = 'kgraph-launcher';
 // Read version from our own package.json — always in sync with publish
 const VERSION = require('./package.json').version;
-const GITHUB_REPO = 'ajksunkang/KGraph';
+const GITHUB_REPO = 'ajksunkang-aios/KGraph';
 
 // ── 1. Resolve platform bundle ──
 

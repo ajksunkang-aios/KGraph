@@ -101,7 +101,7 @@ case "$CMD" in
     ;;
   ingest|status)
     # Reserved for future index lifecycle commands
-    echo "kgraph: '$CMD' is not yet implemented. See https://github.com/ajksunkang/KGraph/issues"
+    echo "kgraph: '$CMD' is not yet implemented. See https://github.com/ajksunkang-aios/KGraph/issues"
     exit 1
     ;;
   *)
