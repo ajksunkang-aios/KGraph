@@ -58,7 +58,14 @@ function downloadBundle() {
   const tmpArchive = path.join(tmpDir, archiveName);
 
   try {
-    execSync(`curl -fsSL -o "${tmpArchive}" "${url}"`, { stdio: 'inherit' });
+    // Try with TLS verification first; fall back to --insecure (-k) when the
+    // environment breaks cert verification (corporate proxy / intercepting CA).
+    try {
+      execSync(`curl -fsSL -o "${tmpArchive}" "${url}"`, { stdio: 'inherit' });
+    } catch {
+      console.error('KGraph: secure download failed (cert verification), retrying with --insecure (-k)...');
+      execSync(`curl -fkSL -o "${tmpArchive}" "${url}"`, { stdio: 'inherit' });
+    }
     execSync(`tar xzf "${tmpArchive}" -C "${cacheDir}" --strip-components=1`, { stdio: 'inherit' });
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
