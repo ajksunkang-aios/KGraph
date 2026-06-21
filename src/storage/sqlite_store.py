@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -196,6 +197,15 @@ class SQLiteStore(GraphStore):
         self._file_id_cache: dict[str, int] = {}
         self._batch_counter = 0
 
+        # Bulk-load tuning + per-phase timing instrumentation.
+        self._bulk_mode = False
+        _vmaj_vmin = tuple(int(x) for x in sqlite3.sqlite_version.split(".")[:2])
+        self._supports_returning = _vmaj_vmin >= (3, 35)  # INSERT ... RETURNING
+        self._stats: dict[str, float] = {
+            "symbol_write_s": 0.0, "occ_write_s": 0.0, "edge_write_s": 0.0,
+            "symbols": 0, "occurrences": 0, "edges": 0, "batches": 0,
+        }
+
     # ── Schema creation ──
 
     def create_schema(self) -> None:
@@ -204,6 +214,25 @@ class SQLiteStore(GraphStore):
         self.conn.executescript(_SCHEMA_SQL)
         self.conn.executescript(_FTS_TRIGGERS)
         self.conn.commit()
+
+    # ── Bulk-load mode (full ingest) ──
+
+    def begin_bulk_load(self) -> None:
+        """Enter bulk-load mode for a full ingest.
+
+        - One transaction for the whole ingest (write_batch's periodic commit
+          is suppressed; finalize() commits once).
+        - PRAGMA synchronous=OFF + temp_store=MEMORY: the DB is rebuildable
+          from index.scip, so we trade crash-durability during load for speed.
+        finalize() restores synchronous=NORMAL.
+        """
+        self._bulk_mode = True
+        self.conn.execute("PRAGMA synchronous=OFF")
+        self.conn.execute("PRAGMA temp_store=MEMORY")
+
+    def ingest_stats(self) -> dict:
+        """Per-phase write timings + row counts accumulated by write_batch."""
+        return dict(self._stats)
 
     # ── Batch write (ingestion) ──
 
@@ -214,20 +243,30 @@ class SQLiteStore(GraphStore):
             file_id = self._write_file(batch.file)
 
             # 2. Write symbols
+            t = time.perf_counter()
             self._write_symbols(batch.symbols, file_id)
+            self._stats["symbol_write_s"] += time.perf_counter() - t
+            self._stats["symbols"] += len(batch.symbols)
 
-            # 3. Write occurrences
+            # 3. Write occurrences (batched via executemany)
+            t = time.perf_counter()
             self._write_occurrences(batch.occurrences, file_id)
+            self._stats["occ_write_s"] += time.perf_counter() - t
+            self._stats["occurrences"] += len(batch.occurrences)
 
-            # 4. Write edges
+            # 4. Write edges (batched via executemany)
+            t = time.perf_counter()
             self._write_edges(batch.edges, file_id)
+            self._stats["edge_write_s"] += time.perf_counter() - t
+            self._stats["edges"] += len(batch.edges)
 
             # 5. Write metadata
             self._write_metadata(batch.metadata)
+            self._stats["batches"] += 1
 
-            # Periodic commit for batch performance
+            # Periodic commit (suppressed during bulk load; finalize commits once)
             self._batch_counter += 1
-            if self._batch_counter % 10 == 0:  # Commit every 10 documents
+            if not self._bulk_mode and self._batch_counter % 10 == 0:
                 self.conn.commit()
                 logger.debug("Committed after %d batches", self._batch_counter)
 
@@ -280,6 +319,12 @@ class SQLiteStore(GraphStore):
         )
         self.conn.commit()
 
+        # Restore bulk-load PRAGMAs (DB is committed; future writes use the
+        # normal durable settings).
+        if self._bulk_mode:
+            self.conn.execute("PRAGMA synchronous=NORMAL")
+            self._bulk_mode = False
+
         logger.info("Finalized: %d symbols, %d files",
                      len(self._symbol_id_cache), len(self._file_id_cache))
 
@@ -300,7 +345,9 @@ class SQLiteStore(GraphStore):
         return rowid
 
     def _write_symbols(self, symbols: list[SymbolRecord], file_id: int) -> None:
-        """Insert symbol records."""
+        """Insert symbol records. Existing symbols (by scip_symbol) keep their
+        rowid (upsert) so inbound edges stay valid; new symbols use
+        INSERT ... RETURNING id to avoid a second SELECT per symbol."""
         for sym in symbols:
             if sym.scip_symbol in self._symbol_id_cache:
                 # Update existing symbol's definition location
@@ -311,7 +358,7 @@ class SQLiteStore(GraphStore):
                 )
                 continue
 
-            self.conn.execute(_INSERT_SYMBOL, (
+            params = (
                 sym.scip_symbol,
                 sym.name,
                 sym.kind,
@@ -323,14 +370,20 @@ class SQLiteStore(GraphStore):
                 int(sym.is_external),
                 sym.subsystem,
                 sym.enclosing_symbol,
-            ))
-
-            rowid = self._get_symbol_id(sym.scip_symbol)
+            )
+            if self._supports_returning:
+                row = self.conn.execute(_INSERT_SYMBOL + " RETURNING id", params).fetchone()
+                rowid = row[0] if row is not None else self._get_symbol_id(sym.scip_symbol)
+            else:
+                self.conn.execute(_INSERT_SYMBOL, params)
+                rowid = self._get_symbol_id(sym.scip_symbol)
             self._symbol_id_cache[sym.scip_symbol] = rowid
 
     def _write_occurrences(self, occurrences: list[OccurrenceRecord],
                            file_id: int) -> None:
-        """Insert occurrence records."""
+        """Insert occurrence records (batched: resolve ids in Python via the
+        symbol-id cache, then one executemany per Document)."""
+        rows = []
         for occ in occurrences:
             symbol_id = self._get_symbol_id(occ.symbol)
             if symbol_id is None:
@@ -340,15 +393,19 @@ class SQLiteStore(GraphStore):
             if occ.enclosing_symbol:
                 enclosing_id = self._get_symbol_id(occ.enclosing_symbol)
 
-            self.conn.execute(_INSERT_OCCURRENCE, (
+            rows.append((
                 symbol_id, file_id,
                 occ.start_line, occ.start_col,
                 occ.end_line, occ.end_col,
                 occ.role, enclosing_id,
             ))
+        if rows:
+            self.conn.executemany(_INSERT_OCCURRENCE, rows)
 
     def _write_edges(self, edges: list[EdgeRecord], file_id: int) -> None:
-        """Insert edge records."""
+        """Insert edge records (batched: resolve src/dst ids in Python via the
+        caches, then one executemany per Document)."""
+        rows = []
         for edge in edges:
             src_id = self._get_symbol_id(edge.src_symbol)
             dst_id = self._get_symbol_id(edge.dst_symbol)
@@ -357,12 +414,14 @@ class SQLiteStore(GraphStore):
 
             edge_file_id = self._get_file_id(edge.file_path) if edge.file_path else None
 
-            self.conn.execute(_INSERT_EDGE, (
+            rows.append((
                 src_id, dst_id, edge.type,
                 edge_file_id, edge.line,
                 edge.weight, edge.confidence,
                 edge.metadata,
             ))
+        if rows:
+            self.conn.executemany(_INSERT_EDGE, rows)
 
     def _write_metadata(self, metadata: list[MetadataRecord]) -> None:
         """Insert metadata records."""

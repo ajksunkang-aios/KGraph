@@ -179,12 +179,14 @@ def _ingest(scip_path: Path, db_path: Path) -> None:
     parser = SCIPParser(scip_path)
     store = SQLiteStore(db_path)
     store.create_schema()
+    store.begin_bulk_load()  # one txn + fast PRAGMAs for the whole ingest
 
     total_symbols = 0
     total_occurrences = 0
     total_edges = 0
     total_files = 0
     batch_count = 0
+    write_s = 0.0
 
     parse_fn = parser.parse_stream if use_stream else parser.parse
     t0 = time.time()
@@ -197,7 +199,9 @@ def _ingest(scip_path: Path, db_path: Path) -> None:
         if batch.file.path:
             total_files += 1
 
+        _tw = time.perf_counter()
         store.write_batch(batch)
+        write_s += time.perf_counter() - _tw
 
         if batch_count % 100 == 0:
             elapsed = time.time() - t0
@@ -206,7 +210,9 @@ def _ingest(scip_path: Path, db_path: Path) -> None:
                   f"occ={total_occurrences} edges={total_edges} "
                   f"time={elapsed:.1f}s")
 
+    _tf = time.perf_counter()
     store.finalize()
+    finalize_s = time.perf_counter() - _tf
     elapsed = time.time() - t0
 
     # ── Summary ──
@@ -236,6 +242,16 @@ def _ingest(scip_path: Path, db_path: Path) -> None:
         print(f"\n  {_bold('Edge breakdown:')}")
         for etype, count in sorted(edge_counts.items(), key=lambda x: -x[1]):
             print(f"    {etype}: {count}")
+
+    # ── Phase breakdown (parse vs write vs finalize) ──
+    stats = store.ingest_stats()
+    parse_s = max(0.0, elapsed - write_s - finalize_s)
+    print(f"\n  {_bold('Phase breakdown:')}")
+    print(f"    parse + overhead : {parse_s:.1f}s")
+    print(f"    write symbols    : {stats['symbol_write_s']:.1f}s ({stats['symbols']} rows)")
+    print(f"    write occurrences: {stats['occ_write_s']:.1f}s ({stats['occurrences']} rows)")
+    print(f"    write edges      : {stats['edge_write_s']:.1f}s ({stats['edges']} rows)")
+    print(f"    finalize         : {finalize_s:.1f}s")
 
     store.close()
 
