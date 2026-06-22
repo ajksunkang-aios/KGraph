@@ -13,6 +13,7 @@ Two modes:
 
 from __future__ import annotations
 
+import bisect
 import logging
 import os
 import sys
@@ -335,6 +336,12 @@ class SCIPParser:
 
         # ── Step 3: Resolve enclosing_symbol for each occurrence ──
 
+        # Sort definition ranges by start_line once (O(D log D)) so the
+        # per-occurrence _find_enclosing_symbol lookups below (and in Step 7)
+        # are O(log D + depth) via bisect, not O(D) — the full-scan version was
+        # the super-linear parse bottleneck on large kernels.
+        definition_ranges.sort()
+
         for occ_rec in occurrence_records:
             if occ_rec.role & SymbolRole.DEFINITION:
                 # Definition occurrences: enclosing_range on the definition
@@ -574,26 +581,39 @@ class SCIPParser:
         definition_ranges: list,
     ) -> str | None:
         """
-        Find the symbol whose definition range encloses the given position.
+        Find the innermost symbol whose definition range encloses `line`.
 
-        definition_ranges: list of (start_line, end_line, start_col, scip_symbol)
+        definition_ranges: list of (start_line, end_line, start_col, scip_symbol),
+        MUST be sorted by start_line ascending (done once per document in
+        _parse_document).
 
-        Strategy: find the definition with the smallest range that still
-        contains the position. This gives the "innermost enclosing" symbol
-        (e.g. a local function inside a struct inside a namespace).
+        C definitions form a laminar family — ranges are disjoint or nested,
+        never partially overlapping — so the innermost container is the range
+        with the largest start_line that still contains `line`
+        (start <= line <= end). bisect finds the split point (ranges with
+        start <= line) in O(log D); a short downward scan returns the first
+        range whose end >= line (the innermost, since laminar =>
+        larger start = more inner).
+
+        O(log D + depth) per call instead of the O(D) full scan this used to
+        do — that made ingest O(M·D) per document and blew up super-linearly
+        on large kernels (parse 2343s -> 26099s for a 2.5x bigger tree).
         """
-        best_symbol = None
-        best_range_size = float("inf")
-
-        for start_line, end_line, start_col, symbol in definition_ranges:
-            # Check if position is within this definition's range
-            if start_line <= line <= end_line:
-                range_size = end_line - start_line
-                if range_size < best_range_size:
-                    best_range_size = range_size
-                    best_symbol = symbol
-
-        return best_symbol
+        if not definition_ranges:
+            return None
+        # Count of ranges with start_line <= line. The sentinel sorts after any
+        # real range whose start_line <= line (no end_line reaches inf), so
+        # bisect_right gives exactly that count.
+        p = bisect.bisect_right(
+            definition_ranges, (line, float("inf"), float("inf"), "")
+        )
+        # Scan downward (largest start first); the first range with end >= line
+        # is the innermost container.
+        for i in range(p - 1, -1, -1):
+            _start, end, _col, symbol = definition_ranges[i]
+            if end >= line:
+                return symbol
+        return None
 
 
 # ──────────────────────────────────────────────
