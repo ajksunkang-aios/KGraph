@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KernelGraph — A compiler-semantic knowledge graph for the OS kernel</title>
+<meta name="description" content="KernelGraph indexes what the compiler sees: a config-aware, macro-resolved, function-pointer-callable code graph for the Linux kernel, served to AI agents via MCP.">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0a0e1a;--bg2:#0d1220;--surface:#131a2b;--surface2:#171f33;
+    --border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.14);
+    --text:#e6edf3;--muted:#9aa4b8;--dim:#6b7689;
+    --teal:#2dd4bf;--blue:#60a5fa;--purple:#a78bfa;--green:#3fb950;--red:#f85149;--amber:#f0b429;
+    --grad:linear-gradient(135deg,#2dd4bf 0%,#60a5fa 60%,#a78bfa 100%);
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  html{scroll-behavior:smooth}
+  body{font-family:var(--sans);background:var(--bg);color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  /* bilingual */
+  body:not(.zh) .zh{display:none}
+  body.zh .en{display:none}
+  /* nav */
+  nav{position:sticky;top:0;z-index:50;background:rgba(10,14,26,.82);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+  .nav-in{display:flex;align-items:center;justify-content:space-between;height:62px;gap:14px}
+  .brand{display:flex;align-items:center;gap:11px;font-weight:700;font-size:17px;letter-spacing:-.01em;flex-shrink:0}
+  .brand .dot{width:24px;height:24px;border-radius:7px;background:var(--grad);box-shadow:0 0 20px rgba(45,212,191,.45)}
+  .nav-links{display:flex;gap:24px;font-size:14px;color:var(--muted)}
+  .nav-links a:hover{color:var(--text)}
+  .nav-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
+  .lang-toggle{font-size:13px;font-weight:600;padding:8px 13px;border-radius:8px;border:1px solid var(--border2);cursor:pointer;color:var(--text);background:var(--surface);font-family:inherit}
+  .lang-toggle:hover{border-color:var(--teal)}
+  .nav-cta{font-size:13px;font-weight:600;padding:8px 15px;border-radius:8px;border:1px solid var(--border2);color:var(--text);transition:.2s}
+  .nav-cta:hover{background:var(--surface);border-color:var(--teal)}
+  /* hero */
+  header.hero{position:relative;padding:110px 0 80px;overflow:hidden}
+  .hero::before{content:"";position:absolute;inset:0;background:
+     radial-gradient(720px 380px at 14% -5%,rgba(45,212,191,.16),transparent 60%),
+     radial-gradient(660px 400px at 86% 8%,rgba(167,139,250,.14),transparent 60%);pointer-events:none}
+  .hero-grid{position:absolute;inset:0;opacity:.4;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:48px 48px;mask-image:radial-gradient(circle at 50% 28%,#000,transparent 72%);-webkit-mask-image:radial-gradient(circle at 50% 28%,#000,transparent 72%)}
+  .hero-in{position:relative;text-align:center}
+  .pill{display:inline-flex;gap:8px;align-items:center;font-size:12.5px;color:var(--teal);border:1px solid rgba(45,212,191,.3);background:rgba(45,212,191,.06);padding:6px 14px;border-radius:999px;margin-bottom:26px;font-weight:500;letter-spacing:.02em}
+  .pill::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--teal);box-shadow:0 0 10px var(--teal)}
+  h1{font-size:clamp(40px,7vw,76px);line-height:1.02;font-weight:800;letter-spacing:-.035em;margin-bottom:22px}
+  h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .lede{font-size:clamp(16px,2.1vw,20px);color:var(--muted);max-width:720px;margin:0 auto 8px}
+  .lede strong{color:var(--text);font-weight:600}
+  .chips{display:flex;gap:9px;justify-content:center;flex-wrap:wrap;margin:22px 0 34px;font-size:13px;color:var(--dim)}
+  .chips span{border:1px solid var(--border);padding:5px 13px;border-radius:999px;background:var(--surface)}
+  .cta-row{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+  .btn{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:15px;padding:13px 25px;border-radius:10px;transition:.2s;cursor:pointer}
+  .btn-pri{background:var(--grad);color:#06121a;box-shadow:0 8px 32px rgba(45,212,191,.32)}
+  .btn-pri:hover{transform:translateY(-2px);box-shadow:0 12px 40px rgba(45,212,191,.42)}
+  .btn-sec{border:1px solid var(--border2);color:var(--text);background:var(--surface)}
+  .btn-sec:hover{border-color:var(--teal);background:var(--surface2)}
+  /* sections */
+  section{padding:78px 0;border-top:1px solid var(--border);position:relative;scroll-margin-top:70px}
+  .eyebrow{font-size:13px;font-weight:600;color:var(--teal);letter-spacing:.13em;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:10px}
+  .eyebrow .sn{font-family:var(--mono);color:var(--dim);background:var(--surface);border:1px solid var(--border);padding:1px 8px;border-radius:6px;letter-spacing:0}
+  h2{font-size:clamp(26px,3.6vw,38px);font-weight:700;letter-spacing:-.022em;margin-bottom:14px}
+  .sec-lede{color:var(--muted);font-size:16.5px;max-width:720px;margin-bottom:40px}
+  .sub-h{font-size:18px;font-weight:700;margin:42px 0 20px;color:var(--text);display:flex;align-items:center;gap:10px}
+  .sub-h::before{content:"";width:3px;height:18px;background:var(--teal);border-radius:2px}
+  /* TOC */
+  .toc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .toc-item{display:flex;gap:14px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;transition:.2s}
+  .toc-item:hover{transform:translateY(-2px);border-color:var(--teal);background:var(--surface2)}
+  .toc-n{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--teal);flex-shrink:0;width:30px}
+  .toc-t{font-size:14.5px;font-weight:500;line-height:1.35}
+  /* compare */
+  .compare{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:16px;overflow:hidden}
+  .compare .h{font-weight:700;padding:15px 24px;font-size:14px}
+  .compare .h.bad{background:rgba(248,81,73,.09);color:#ffb4ae}
+  .compare .h.good{background:rgba(63,185,80,.09);color:#9ae6a4}
+  .compare .col{padding:8px 24px 18px}
+  .item{padding:12px 0;border-top:1px solid var(--border);display:flex;gap:11px;font-size:14.5px;line-height:1.5}
+  .item:first-child{border-top:0}
+  .col-bad .item{color:var(--muted)}
+  .col-good .item{color:var(--text)}
+  .x{color:var(--red);font-weight:800;flex-shrink:0}.ck{color:var(--green);font-weight:800;flex-shrink:0}
+  /* topology */
+  .topo{display:flex;flex-direction:column;align-items:center;gap:0;margin:6px 0 14px}
+  .topo-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 26px;text-align:center;min-width:330px}
+  .topo-box.agent{border-color:rgba(167,139,250,.45)}
+  .topo-box.serve{border-color:rgba(96,165,250,.45)}
+  .topo-box.db{border-color:rgba(45,212,191,.5);background:linear-gradient(180deg,rgba(45,212,191,.07),var(--surface))}
+  .topo-box.build{border-color:var(--border2)}
+  .topo-box .tk{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);display:block;margin-bottom:3px}
+  .topo-box .tt{font-weight:600;font-size:14px}
+  .topo-box .mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .topo-arr{color:var(--teal);font-size:16px;padding:5px 0;text-align:center}
+  .topo-arr small{font-size:10.5px;color:var(--dim);display:block;margin-top:1px}
+  .privacy{margin:18px 0 36px;background:rgba(63,185,80,.07);border:1px solid rgba(63,185,80,.25);border-left:3px solid var(--green);border-radius:10px;padding:12px 18px;font-size:13.5px;color:var(--muted)}
+  .privacy b{color:var(--green)}
+  /* pipeline */
+  .pipe{display:flex;flex-wrap:wrap;align-items:stretch;gap:0;margin-top:6px}
+  .stage{flex:1 1 0;min-width:112px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:15px 8px;text-align:center}
+  .stage .ico{font-size:20px;margin-bottom:7px;line-height:1}
+  .stage .t{font-weight:600;font-size:13px;margin-bottom:2px}
+  .stage .s{font-size:11px;color:var(--dim)}
+  .arrow{display:flex;align-items:center;color:var(--teal);font-size:19px;padding:0 4px;flex:0 0 auto}
+  /* cards */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;transition:.22s;position:relative}
+  .card:hover{transform:translateY(-3px);border-color:var(--border2);box-shadow:0 14px 42px rgba(0,0,0,.34)}
+  .card .em{font-size:22px;margin-bottom:12px;line-height:1}
+  .card h3{font-size:16px;margin-bottom:8px;letter-spacing:-.01em}
+  .card p{font-size:13.5px;color:var(--muted)}
+  .card.star{border-color:rgba(45,212,191,.35);background:linear-gradient(180deg,rgba(45,212,191,.06),var(--surface))}
+  .card.star h3{color:var(--teal)}
+  .num{position:absolute;top:14px;right:18px;font-family:var(--mono);font-size:12.5px;color:var(--dim);font-weight:700}
+  /* spotlight */
+  .spot{display:grid;grid-template-columns:1.05fr .95fr;gap:28px;align-items:center}
+  .spot ul{list-style:none;display:flex;flex-direction:column;gap:13px;margin-top:6px}
+  .spot li{display:flex;gap:12px;font-size:14px;color:var(--muted)}
+  .spot li b{color:var(--text)}
+  .spot li .b{flex-shrink:0;width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+  .b.green{background:rgba(63,185,80,.15);color:var(--green)}.b.red{background:rgba(248,81,73,.15);color:var(--red)}
+  /* code */
+  .code{background:#070b15;border:1px solid var(--border);border-radius:12px;overflow:hidden;font-family:var(--mono);font-size:12.6px;line-height:1.75}
+  .code .bar{display:flex;gap:6px;padding:11px 14px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.02);align-items:center}
+  .code .bar i{width:11px;height:11px;border-radius:50%;display:inline-block}
+  .code .bar .fn-name{margin-left:10px;font-size:11.5px;color:var(--dim)}
+  .code pre{padding:16px;overflow-x:auto;color:#c9d4e5;white-space:pre}
+  .kw{color:#c792ea}.fn{color:#82aaff}.ty{color:#ffcb6b}.str{color:#c3e88d}.cm{color:#5f6a7d;font-style:italic}.num{color:#f78c6c}.op{color:#89ddff}
+  /* data model layers */
+  .layers{display:flex;flex-direction:column;gap:10px}
+  .layer{display:flex;gap:18px;align-items:stretch;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:15px 20px;border-left:3px solid var(--teal)}
+  .layer.l2{border-left-color:var(--blue)}
+  .layer.l3{border-left-color:var(--dim)}
+  .layer-tag{flex:0 0 160px;font-weight:600;font-size:13.5px}
+  .layer-sub{font-weight:400;font-size:11.5px;color:var(--dim);display:block;margin-top:2px}
+  .layer-tbls{display:flex;flex-direction:column;gap:7px;font-size:13.5px;color:var(--muted)}
+  .layer-tbls code{color:var(--teal);font-family:var(--mono)}
+  /* tools */
+  .tools{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .tool{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;transition:.2s}
+  .tool:hover{border-color:var(--border2)}
+  .tool .n{font-family:var(--mono);font-size:13px;color:var(--teal);margin-bottom:3px}
+  .tool .d{font-size:12.5px;color:var(--muted);line-height:1.45}
+  .tool.star .n{color:var(--amber)}
+  .tool.star{border-color:rgba(240,180,41,.25)}
+  /* results */
+  .res-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:6px 0;overflow:hidden;margin-bottom:20px}
+  .res-table{width:100%;border-collapse:collapse;font-size:13.5px}
+  .res-table th{background:rgba(255,255,255,.03);color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.04em;text-align:right;padding:11px 16px;border-bottom:1px solid var(--border);white-space:nowrap}
+  .res-table th.l{text-align:left}
+  .res-table td{padding:11px 16px;text-align:right;border-bottom:1px solid var(--border);white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--muted)}
+  .res-table td.l{text-align:left;color:var(--text)}
+  .res-table tr:last-child td{border-bottom:0}
+  .res-table td.hi{color:var(--teal);font-weight:600}
+  .res-table .mono{font-family:var(--mono);font-size:11.5px}
+  .tier-note{font-size:13px;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:20px;line-height:1.6}
+  .tier-note b{color:var(--text)}
+  .bars{display:flex;flex-direction:column;gap:20px;margin-top:8px}
+  .lbl{display:flex;justify-content:space-between;align-items:baseline;font-size:14px;margin-bottom:8px}
+  .lbl b{font-family:var(--mono);font-size:14.5px}
+  .lbl .tag{font-size:12px;color:var(--dim)}
+  .track{height:15px;background:var(--surface2);border-radius:8px;overflow:hidden;border:1px solid var(--border)}
+  .fill{height:100%;border-radius:8px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-size:10.5px;font-family:var(--mono);color:#06121a;font-weight:700;white-space:nowrap}
+  .fill.lo{background:linear-gradient(90deg,#2dd4bf,#3fb950);width:40%}
+  .fill.hi{background:linear-gradient(90deg,#f0b429,#f85149);width:100%;color:#1a0d06}
+  /* dashboard */
+  .dash{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:22px}
+  .d-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+  .d-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 15px}
+  .d-card .k{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+  .d-card .v{font-size:19px;font-weight:600;margin-top:3px;font-variant-numeric:tabular-nums}
+  .d-card .v.mono{font-family:var(--mono);font-size:14.5px}
+  .d-table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px}
+  .d-table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .d-table th{background:rgba(255,255,255,.03);color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.04em;text-align:right;padding:9px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+  .d-table th.l{text-align:left}
+  .d-table td{padding:9px 12px;text-align:right;border-bottom:1px solid var(--border);white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--muted)}
+  .d-table td.l{color:var(--text);text-align:left}
+  .d-table .mono{font-family:var(--mono);font-size:12px}
+  .d-table tr:last-child td{border-bottom:0}
+  .dpill{display:inline-block;padding:1px 8px;border-radius:11px;font-size:11px;font-weight:600}
+  .dpill.ok{color:var(--green);background:rgba(63,185,80,.14)}
+  .dpill.bad{color:var(--red);background:rgba(248,81,73,.14)}
+  .d-none{color:var(--dim);padding:26px;text-align:center}
+  .d-foot{color:var(--dim);font-size:12px;margin-top:14px;line-height:1.7}
+  .d-foot a{color:var(--teal)}
+  .live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:6px;box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  /* future-work roadmap (horizontal rows, not boxes) */
+  .roadmap{display:flex;flex-direction:column;border-top:1px solid var(--border);margin-top:6px}
+  .rm-row{display:flex;gap:20px;align-items:flex-start;padding:22px 6px;border-bottom:1px solid var(--border);transition:background .15s}
+  .rm-row:hover{background:rgba(45,212,191,.035)}
+  .rm-n{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--teal);flex-shrink:0;width:30px;padding-top:3px;letter-spacing:.02em}
+  .rm-body{flex:1;min-width:0}
+  .rm-title{font-weight:700;font-size:15.5px;margin-bottom:5px;letter-spacing:-.01em}
+  .rm-desc{font-size:13.5px;color:var(--muted);line-height:1.55}
+  .rm-desc code{font-family:var(--mono);font-size:12px;color:#c9d4e5}
+  .rm-area{flex-shrink:0;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-top:5px;white-space:nowrap}
+  /* quickstart */
+  .steps{counter-reset:s;display:flex;flex-direction:column;gap:13px;max-width:760px}
+  .step{display:flex;gap:16px;align-items:flex-start;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:15px 20px}
+  .step .n{counter-increment:s;flex-shrink:0;width:28px;height:28px;border-radius:50%;background:var(--grad);color:#06121a;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:14px;margin-top:1px}
+  .step .n::before{content:counter(s)}
+  .step .body{flex:1;min-width:0}
+  .step code{font-family:var(--mono);font-size:13px;color:#c9d4e5;display:block;word-break:break-all}
+  .step .hint{font-size:12.5px;color:var(--dim);margin-top:5px}
+  /* footer */
+  footer{padding:50px 0 60px;border-top:1px solid var(--border);color:var(--dim);font-size:14px}
+  .foot-in{display:flex;justify-content:space-between;flex-wrap:wrap;gap:20px;align-items:center}
+  .foot-links{display:flex;gap:24px;flex-wrap:wrap}
+  .foot-links a:hover{color:var(--text)}
+  .note{font-size:12.5px;color:var(--dim);margin-top:20px;text-align:center;line-height:1.7}
+  .note a{color:var(--teal)}
+  /* problem-section: macro framing + grep critique */
+  .prob-core{background:linear-gradient(135deg,rgba(45,212,191,.08),rgba(167,139,250,.05));border:1px solid var(--border);border-left:3px solid var(--teal);border-radius:12px;padding:18px 26px;margin:6px 0 22px;font-size:clamp(17px,2vw,21px);text-align:center;line-height:1.5}
+  .task-chips{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-bottom:42px}
+  .task-chips span{border:1px solid var(--border);background:var(--surface);padding:5px 13px;border-radius:999px;font-size:13px;color:var(--muted)}
+  .grep-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+  .grep-item{display:flex;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px;font-size:13.5px;color:var(--muted);line-height:1.55}
+  .grep-item .x{color:var(--red);font-weight:800;flex-shrink:0}
+  .grep-item b{color:var(--text)}
+  /* problem-section complexity matrix */
+  .cx-callout{background:linear-gradient(135deg,rgba(240,180,41,.09),rgba(167,139,250,.05));border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:12px;padding:18px 22px;margin-bottom:30px;font-size:14.5px;color:var(--muted);line-height:1.6}
+  .cx-callout b{color:var(--text)}
+  .cx-list{display:flex;flex-direction:column;gap:14px}
+  .cx-row{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:14px;overflow:hidden}
+  .cx-cell{padding:18px 22px}
+  .cx-cell.left{border-right:1px solid var(--border);background:rgba(248,81,73,.045)}
+  .cx-cell.right{background:rgba(63,185,80,.045)}
+  .cx-head{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+  .cx-num{font-size:19px;color:var(--amber);line-height:1}
+  .cx-title{font-weight:700;font-size:15px}
+  .cx-cell p{font-size:13.5px;color:var(--muted);line-height:1.55;margin-bottom:9px}
+  .cx-cell p code{font-family:var(--mono);font-size:12px;color:#c9d4e5}
+  .cx-verdict{font-size:12.5px;display:flex;gap:7px;align-items:flex-start;line-height:1.5}
+  .cx-verdict .vk{font-weight:800;flex-shrink:0}
+  .cx-cell.left .cx-verdict{color:#ffb4ae}.cx-cell.left .cx-verdict .vk{color:var(--red)}
+  .cx-cell.right .cx-verdict{color:#9ae6a4}.cx-cell.right .cx-verdict .vk{color:var(--green)}
+  /* presentation / deck mode */
+  .present-btn{font-size:13px;font-weight:600;padding:8px 13px;border-radius:8px;border:1px solid var(--border2);cursor:pointer;color:var(--text);background:var(--surface);font-family:inherit}
+  .present-btn:hover{border-color:var(--teal);color:var(--teal)}
+  .deck-progress{position:fixed;top:0;left:0;height:3px;background:var(--grad);width:0;z-index:200;transition:width .25s ease;display:none}
+  .deck-bar{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:12px;background:rgba(10,14,26,.88);border:1px solid var(--border2);padding:8px 12px;border-radius:999px;z-index:200}
+  .deck-btn{background:var(--surface2);border:1px solid var(--border2);color:var(--text);width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;font-family:inherit;line-height:1}
+  .deck-btn:hover{border-color:var(--teal);color:var(--teal)}
+  .deck-count{font-family:var(--mono);font-size:12.5px;color:var(--muted);min-width:52px;text-align:center}
+  .deck-exit{position:fixed;bottom:18px;right:20px;display:none;background:var(--surface2);border:1px solid var(--border2);color:var(--muted);padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;z-index:200;font-family:inherit}
+  .deck-exit:hover{color:var(--text);border-color:var(--red)}
+  body.present{overflow:hidden}
+  body.present nav,body.present footer,body.present #toc{display:none}
+  body.present header.hero:not(.slide-on),body.present section:not(.slide-on){display:none}
+  body.present .slide-on{min-height:100vh;height:100vh;overflow-y:auto;padding:64px 0 100px;animation:slidein .36s ease}
+  body.present .slide-on .wrap{max-width:960px;padding:0 36px}
+  body.present .deck-progress{display:block}
+  body.present .deck-bar{display:flex}
+  body.present .deck-exit{display:block}
+  @keyframes slidein{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+  @media(max-width:860px){
+    .grid,.tools,.toc-grid,.spot,.compare{grid-template-columns:1fr}
+    .compare .col-bad{border-bottom:1px solid var(--border)}
+    .nav-links{display:none}
+    .pipe,.layer{flex-direction:column}
+    .layer{gap:8px}.layer-tag{flex-basis:auto}
+    .arrow{transform:rotate(90deg);justify-content:center;padding:3px 0}
+    .res-table th:nth-child(5),.res-table td:nth-child(5){display:none}
+    .cx-row{grid-template-columns:1fr}.cx-cell.left{border-right:0;border-bottom:1px solid var(--border)}
+    .grep-grid{grid-template-columns:1fr}
+    .rm-area{display:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="deck-progress"></div>
+<div class="deck-bar">
+  <button class="deck-btn" id="deckPrev" title="Previous">‹</button>
+  <span class="deck-count" id="deckCount">1 / 10</span>
+  <button class="deck-btn" id="deckNext" title="Next">›</button>
+</div>
+<button class="deck-exit" id="deckExit"><span class="en">Exit (Esc)</span><span class="zh">退出 (Esc)</span></button>
+
+<nav>
+  <div class="wrap nav-in">
+    <a class="brand" href="#"><span class="dot"></span>KernelGraph</a>
+    <div class="nav-links">
+      <a href="#toc"><span class="en">Contents</span><span class="zh">目录</span></a>
+      <a href="#deploy"><span class="en">How it works</span><span class="zh">原理</span></a>
+      <a href="#results"><span class="en">Results</span><span class="zh">效果</span></a>
+      <a href="#start"><span class="en">Quickstart</span><span class="zh">开始</span></a>
+    </div>
+    <div class="nav-right">
+      <button class="present-btn" id="presentBtn" type="button" title="Present"><span class="en">▶ Present</span><span class="zh">▶ 放映</span></button>
+      <button class="lang-toggle" id="langToggle" type="button" title="Switch language">中文</button>
+      <a class="nav-cta" href="https://github.com/ajksunkang-aios/KGraph" target="_blank" rel="noopener">GitHub ↗</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="hero-grid"></div>
+  <div class="wrap hero-in">
+    <span class="pill"><span class="en">A compiler-semantic knowledge graph for the OS kernel</span><span class="zh">编译器语义级的操作系统内核知识图谱</span></span>
+    <h1><span class="g">KernelGraph</span></h1>
+    <p class="lede"><span class="en">Records the truth hidden behind <strong>#ifdef</strong>, <strong>macros</strong>, and <strong>function-pointer tables</strong> — for precise kernel source walkthrough.</span><span class="zh">记录内核代码藏在 <strong>#ifdef</strong>、<strong>宏</strong>、<strong>函数指针表</strong> 背后的真相，支持精确内核源码走读。</span></p>
+    <div class="chips">
+      <span><span class="en">Config-aware</span><span class="zh">配置感知</span></span>
+      <span><span class="en">Macro-resolved</span><span class="zh">宏已展开</span></span>
+      <span><span class="en">Function-pointer-callable</span><span class="zh">函数指针可达</span></span>
+      <span><span class="en">SQLite-native</span><span class="zh">SQLite 原生</span></span>
+    </div>
+    <div class="cta-row">
+      <a class="btn btn-pri" href="#toc"><span class="en">Contents →</span><span class="zh">查看目录 →</span></a>
+      <a class="btn btn-sec" href="https://github.com/ajksunkang-aios/KGraph" target="_blank" rel="noopener"><span class="en">View on GitHub</span><span class="zh">在 GitHub 查看</span></a>
+    </div>
+  </div>
+</header>
+
+<!-- ───────────── TOC ───────────── -->
+<section id="toc" style="padding-top:64px">
+  <div class="wrap">
+    <div class="eyebrow"><span class="sn">目录</span><span class="en">Contents</span><span class="zh">目录</span></div>
+    <h2><span class="en">What's in this page</span><span class="zh">本文内容</span></h2>
+    <div class="toc-grid">
+      <a href="#problem" class="toc-item"><span class="toc-n">01</span><span class="toc-t"><span class="en">The problem</span><span class="zh">问题描述</span></span></a>
+      <a href="#positioning" class="toc-item"><span class="toc-n">02</span><span class="toc-t"><span class="en">Product positioning</span><span class="zh">产品定位</span></span></a>
+      <a href="#deploy" class="toc-item"><span class="toc-n">03</span><span class="toc-t"><span class="en">Deployment view &amp; how it works</span><span class="zh">部署视图与工作原理</span></span></a>
+      <a href="#tech" class="toc-item"><span class="toc-n">04</span><span class="toc-t"><span class="en">Key technology</span><span class="zh">关键技术</span></span></a>
+      <a href="#tools" class="toc-item"><span class="toc-n">05</span><span class="toc-t"><span class="en">MCP tool interface</span><span class="zh">MCP 工具接口</span></span></a>
+      <a href="#results" class="toc-item"><span class="toc-n">06</span><span class="toc-t"><span class="en">Results (KBench Code-Retrieval)</span><span class="zh">效果展示（KBench Code-Retrieval）</span></span></a>
+      <a href="#status" class="toc-item"><span class="toc-n">07</span><span class="toc-t"><span class="en">Health dashboard</span><span class="zh">健康看板</span></span></a>
+      <a href="#start" class="toc-item"><span class="toc-n">08</span><span class="toc-t"><span class="en">Quickstart</span><span class="zh">快速开始</span></span></a>
+      <a href="#future" class="toc-item"><span class="toc-n">09</span><span class="toc-t"><span class="en">Future work</span><span class="zh">未来工作</span></span></a>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── 01 问题描述 ───────────── -->
+<section id="problem">
+  <div class="wrap">
+    <div class="eyebrow"><span class="sn">01</span><span class="en">The problem</span><span class="zh">问题描述</span></div>
+    <h2><span class="en">AI agents still struggle with OS-kernel engineering</span><span class="zh">AI Agent 解决 OS 内核智能体工程仍很困难</span></h2>
+    <p class="sec-lede"><span class="en">Requirement development, bottleneck analysis, bug finding, bug fixing — every kernel agent-engineering task rests on one core problem:</span><span class="zh">需求开发、瓶颈分析、bugfinding、bugfix——每一项内核智能体工程任务都建立在同一个核心问题之上：</span></p>
+
+    <div class="prob-core"><span class="en">Correct &amp; efficient understanding of the code.</span><span class="zh">对代码的正确、高效理解。</span></div>
+    <div class="task-chips">
+      <span><span class="en">Requirement dev</span><span class="zh">需求开发</span></span>
+      <span><span class="en">Bottleneck analysis</span><span class="zh">瓶颈分析</span></span>
+      <span>bugfinding</span>
+      <span>bugfix</span>
+      <span><span class="en">Code review</span><span class="zh">代码审查</span></span>
+      <span><span class="en">Backporting</span><span class="zh">补丁回移</span></span>
+    </div>
+
+    <div class="sub-h"><span class="en">Today's retrieval: coarse-grained &amp; low-efficiency</span><span class="zh">今天的检索方式：粗粒度、低效率</span></div>
+    <p class="sec-lede"><span class="en">Agents fall back to <code>grep</code> / <code>glob</code> / <code>read</code> — pure-text retrieval that is <b>coarse-grained</b> and <b>low-efficiency</b>:</span><span class="zh">Agent 只能退回 <code>grep</code> / <code>glob</code> / <code>read</code>——<b>粗粒度、低效率</b>的纯文本检索：</span></p>
+    <div class="grep-grid">
+      <div class="grep-item"><span class="x">✕</span><div><b><span class="en">Imprecise walkthrough</span><span class="zh">走读不精准</span></b><span class="en"> — text matches scatter across dead <code>#ifdef</code> branches and same-named <code>static</code>s.</span><span class="zh">——文本匹配散落到死 <code>#ifdef</code> 分支与同名 <code>static</code> 里。</span></div></div>
+      <div class="grep-item"><span class="x">✕</span><div><b><span class="en">Inefficient walkthrough</span><span class="zh">走读不高效</span></b><span class="en"> — many round-trips, 10k+ tokens, to piece together what one graph query answers.</span><span class="zh">——多次往返、10k+ token，才能拼出一次图谱查询就能答的事。</span></div></div>
+    </div>
+
+    <div class="sub-h"><span class="en">Existing work — built on Tree-sitter AST</span><span class="zh">现有工作 —— 建立在 Tree-sitter AST 之上</span></div>
+    <div class="cx-callout">
+      <span class="en"><b>CodeGraph</b>, <b>Codebase-Memory</b>, <b>Semcode</b> — all built on <b>Tree-sitter (static AST)</b>. None treats the <b>compiler semantic IR</b> as the foundation for a kernel code graph, so none meets these requirements:</span>
+      <span class="zh"><b>CodeGraph</b>、<b>Codebase-Memory</b>、<b>Semcode</b>——均建立在 <b>Tree-sitter（静态语法树 AST）</b>之上，未把<b>编译器语义 IR</b> 作为内核代码图谱的构建基础，因此均无法满足：</span>
+    </div>
+    <div class="cx-list">
+      <div class="cx-row">
+        <div class="cx-cell left">
+          <div class="cx-head"><span class="cx-num">①</span><span class="cx-title"><span class="en">Conditional compilation</span><span class="zh">条件编译</span></span></div>
+          <p><span class="en">Multi-ISA, multi-config, multi-platform, multi-version — <code>#ifdef CONFIG_*</code>, <code>#ifdef __x86_64__</code>…</span><span class="zh">多 ISA 架构、多配置、多平台、多版本 —— <code>#ifdef CONFIG_*</code>、<code>#ifdef __x86_64__</code>…</span></p>
+          <div class="cx-verdict"><span class="vk">✕</span><span><span class="en"><b>Tree-sitter AST:</b> parses every branch blindly — cannot prune by config.</span><span class="zh"><b>Tree-sitter AST：</b>盲目解析所有分支——无法按配置裁剪。</span></span></div>
+        </div>
+        <div class="cx-cell right">
+          <div class="cx-verdict"><span class="vk">✓</span><span><span class="en"><b>Compiler IR (KGraph):</b> indexes only what <code>defconfig</code> compiles — dead branches never enter the graph.</span><span class="zh"><b>编译器 IR（KGraph）：</b>只索引 <code>defconfig</code> 真正编译的代码——死分支永不进图。</span></span></div>
+        </div>
+      </div>
+      <div class="cx-row">
+        <div class="cx-cell left">
+          <div class="cx-head"><span class="cx-num">②</span><span class="cx-title"><span class="en">Function-pointer indirect references</span><span class="zh">函数指针间接引用</span></span></div>
+          <p><span class="en">Architectural extensibility via ops tables — device drivers, VFS, net/proto ops. Call sites like <code>f_op-&gt;read_iter()</code>.</span><span class="zh">经 ops 表实现的架构可扩展性——设备驱动、VFS、net/proto ops。调用点如 <code>f_op-&gt;read_iter()</code>。</span></p>
+          <div class="cx-verdict"><span class="vk">✕</span><span><span class="en"><b>Tree-sitter AST:</b> the call site has no impl name — the target is unresolvable.</span><span class="zh"><b>Tree-sitter AST：</b>调用点无实现名——目标无法解析。</span></span></div>
+        </div>
+        <div class="cx-cell right">
+          <div class="cx-verdict"><span class="vk">✓</span><span><span class="en"><b>Compiler IR (KGraph):</b> <code>ops_bind</code> edges connect every ops-table field to its concrete implementation.</span><span class="zh"><b>编译器 IR（KGraph）：</b><code>ops_bind</code> 边把每个 ops 表字段连到具体实现。</span></span></div>
+        </div>
+      </div>
+      <div class="cx-row">
+        <div class="cx-cell left">
+          <div class="cx-head"><span class="cx-num">③</span><span class="cx-title"><span class="en">Complex macro expansion</span><span class="zh">复杂宏展开</span></span></div>
+          <p><span class="en"><code>EXPORT_SYMBOL</code>, <code>SYSCALL_DEFINE*</code>, <code>module_init</code>, <code>DEFINE_*</code> — define the real symbols and entry points.</span><span class="zh"><code>EXPORT_SYMBOL</code>、<code>SYSCALL_DEFINE*</code>、<code>module_init</code>、<code>DEFINE_*</code>——定义真实符号与入口。</span></p>
+          <div class="cx-verdict"><span class="vk">✕</span><span><span class="en"><b>Tree-sitter AST:</b> macro bodies are opaque text tokens — symbols can't be identified.</span><span class="zh"><b>Tree-sitter AST：</b>宏体是不透明文本 token——符号无法识别。</span></span></div>
+        </div>
+        <div class="cx-cell right">
+          <div class="cx-verdict"><span class="vk">✓</span><span><span class="en"><b>Compiler IR (KGraph):</b> indexes macro-<b>expanded</b> real symbols, with names and positions.</span><span class="zh"><b>编译器 IR（KGraph）：</b>索引宏<b>展开后</b>的真实符号，带名字与位置。</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── 02 产品定位 ───────────── -->
+<section id="positioning">
+  <div class="wrap">
+    <div class="eyebrow"><span class="sn">02</span><span class="en">Product positioning</span><span class="zh">产品定位</span></div>
+    <h2><span class="en">A compiler-built knowledge graph for AI agents on kernel-class code</span><span class="zh">面向内核类源码、为 AI Agent 而生的编译器级代码知识图谱</span></h2>
+    <div style="background:linear-gradient(135deg,rgba(45,212,191,.07),rgba(167,139,250,.05));border:1px solid var(--border);border-left:3px solid var(--teal);border-radius:14px;padding:24px 28px;margin-bottom:38px">
+      <p style="font-size:clamp(16px,2vw,19px);line-height:1.65"><span class="en">KGraph is a code knowledge-graph engine built with <b style="color:var(--teal)">compiler technology (semantic-analysis IR)</b>, designed for <b style="color:var(--teal)">AI agents</b> working over <b style="color:var(--teal)">general kernel-class source</b> with strong build dependencies.</span><span class="zh">KGraph 是一种利用<b style="color:var(--teal)">编译器技术（语义分析 IR）</b>构建的、面向<b style="color:var(--teal)">通用内核类源码</b>（强构建依赖）、为 <b style="color:var(--teal)">AI Agent</b> 设计的代码知识图谱引擎。</span></p>
+    </div>
+    <div class="grid">
+      <div class="card"><span class="num">01</span><div class="em">🎯</div><h3><span class="en">High accuracy</span><span class="zh">高准确性</span></h3><p><span class="en"><b>Build-aware</b> — resolves macro expansion, function-pointer indirect references, conditional compilation, and other kernel-native language features.</span><span class="zh"><b>构建感知</b>——支持宏展开、函数指针间接引用、条件编译等内核原生 DSL 语言特性。</span></p></div>
+      <div class="card"><span class="num">02</span><div class="em">📦</div><h3><span class="en">Out of the box</span><span class="zh">开箱即用</span></h3><p><span class="en"><b>npm</b>-distributed, minimal local deploy. The graph DB lives directly in your project working directory — zero-config, and the graph never leaves your workspace (no privacy leakage).</span><span class="zh"><b>npm</b> 包发布，本地化极简部署；代码图谱数据库直接保存在项目工作目录下，零配置依赖，且图谱信息不出工作目录（无隐私泄露风险）。</span></p></div>
+      <div class="card"><span class="num">03</span><div class="em">⚡</div><h3><span class="en">High timeliness</span><span class="zh">高及时性</span></h3><p><span class="en">Batched <code>kgraph.db</code> builds + a <b>lazy-indexing</b> hybrid update mode, with a git-staging fallback to grep — index updates are hidden inside the kernel build flow.</span><span class="zh">支持 <code>kgraph.db</code> 批量化构建，支持 <b>lazy-indexing</b> 混合索引更新模式，git 暂存区 fallback 到 grep 等传统模式，索引更新隐藏在内核构建流程中。</span></p></div>
+      <div class="card"><span class="num">04</span><div class="em">🌐</div><h3><span class="en">Rich ecosystem</span><span class="zh">高繁华性</span></h3><p><span class="en">Built on standards — <code>compile_commands.json</code> (Clang/CMake) and a <b>protobuf</b> semantic IR. Single-/multi-repo builds across kernel architectures (Linux, HarmonyOS, …).</span><span class="zh"><code>compile_commands.json</code> 是 Clang/CMake 标准，<b>protobuf</b> 语义 IR 是通用 data schema；支持单仓/多仓构建，支持鸿蒙内核、Linux 内核等各种内核架构。</span></p></div>
+      <div class="card"><span class="num">05</span><div class="em">🛡️</div><h3><span class="en">Robust &amp; evaluable</span><span class="zh">高鲁棒 &amp; 可评估</span></h3><p><span class="en">A daily <b>Linux-mainline health dashboard</b> continuously guards the solution's reliability.</span><span class="zh">构建每日 <b>Linux 主线健康看板</b>，看护解决方案可靠性。</span></p></div>
+      <div class="card" style="display:flex;align-items:center;justify-content:center;border-style:dashed">
+        <p style="text-align:center;font-size:14px"><span class="en">Compiler-aware · Config-aware · Macro-resolved · Function-pointer-callable · SQLite-native</span><span class="zh">编译器感知 · 配置感知 · 宏已展开 · 函数指针可达 · SQLite 原生</span></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── 03 部署视图与工作原理 ───────────── -->
+<section id="deploy">
+  <div class="wrap">
+    <div class="eyebrow"><span class="sn">03</span><span class="en">Deployment view &amp; how it works</span><span class="zh">部署视图与工作原理</span></div>
+    <h2><span class="en">Everything lives in your working directory</span><span class="zh">一切都在你的工作目录里</span></h2>
+    <p class="sec-lede"><span class="en">No daemon, no server, no cloud. <code>npm install</code> brings a self-contained runtime; the graph DB is built into the project tree and served over stdio to your agent.</span><span class="zh">无守护进程、无服务器、无云端。<code>npm install</code> 带来自包含运行时；图谱数据库建在项目目录里，通过 stdio 提供给你的 agent。</span></p>
+
+    <div class="sub-h"><span class="en">Deployment topology</span><span class="zh">部署视图</span></div>
+    <div class="topo">
+      <div class="topo-box agent"><span class="tk"><span class="en">AI Agent</span><span class="zh">AI Agent</span></span><span class="tt"><span class="en">Claude · Cursor · Codex …</span><span class="zh">Claude · Cursor · Codex …</span></span></div>
+      <div class="topo-arr">↕<small><span class="en">MCP over stdio</span><span class="zh">MCP（stdio）</span></small></div>
+      <div class="topo-box serve"><span class="tk"><span class="en">MCP server</span><span class="zh">MCP 服务</span></span><span class="tt mono">kgraph serve</span></div>
+      <div class="topo-arr">↓<small><span class="en">reads</span><span class="zh">读取</span></small></div>
+      <div class="topo-box db"><span class="tk"><span class="en">Graph DB — in the project working directory</span><span class="zh">图谱数据库 —— 在项目工作目录下</span></span><span class="tt mono">.kgraph/kgraph.db</span></div>
+      <div class="topo-arr">↑<small><span class="en">built by</span><span class="zh">由其构建</span></small></div>
+      <div class="topo-box build"><span class="tk"><span class="en">Index build</span><span class="zh">索引构建</span></span><span class="tt mono">kgraph init &nbsp;(scip-clang → parse → SQLite)</span></div>
+      <div class="topo-arr">↑</div>
+      <div class="topo-box"><span class="tk"><span class="en">Kernel source tree</span><span class="zh">内核源码树</span></span><span class="tt mono">compile_commands.json + .c/.h</span></div>
+    </div>
+    <div class="privacy"><b><span class="en">Privacy:</span><span class="zh">隐私：</span></b><span class="en">the graph is built and read entirely inside your working directory. Source and index never leave your machine — no cloud, no telemetry.</span><span class="zh">图谱的构建与读取全部发生在你的工作目录内。源码与索引绝不离开本机——无云端、无遥测。</span></div>
+
+    <div class="sub-h"><span class="en">Build pipeline</span><span class="zh">构建流水线</span></div>
+    <p class="sec-lede" style="margin-bottom:24px"><span class="en">A linear, compiler-aligned pipeline. <code>scip-clang</code> does the heavy lifting; KGraph persists and serves it.</span><span class="zh">一条线性的、对齐编译器的流水线。<code>scip-clang</code> 干重活，KGraph 负责持久化与服务。</span></p>
+    <div class="pipe">
+      <div class="stage"><div class="ico">📋</div><div class="t">compile_commands.json</div><div class="s"><span class="en">build artifacts</span><span class="zh">构建产物</span></div></div>
+      <div class="arrow">→</div>
+      <div class="stage"><div class="ico">⚙️</div><div class="t">scip-clang</div><div class="s"><span class="en">clang, post-PP</span><span class="zh">clang，预处理后</span></div></div>
+      <div class="arrow">→</div>
+      <div class="stage"><div class="ico">📇</div><div class="t">index.scip</div><div class="s">SCIP protobuf</div></div>
+      <div class="arrow">→</div>
+      <div class="stage"><div class="ico">🔍</div><div class="t">SCIPParser</div><div class="s"><span class="en">symbols · edges</span><span class="zh">符号 · 边</span></div></div>
+      <div class="arrow">→</div>
+      <div class="stage"><div class="ico">🗄️</div><div class="t">kgraph.db</div><div class="s">SQLite · WAL · FTS5</div></div>
+      <div class="arrow">→</div>
+      <div class="stage"><div class="ico">🔌</div><div class="t">MCP server</div><div class="s"><span class="en">→ AI agents</span><span class="zh">→ AI agent</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── 04 关键技术 ───────────── -->
+<section id="tech">
+  <div class="wrap">
+    <div class="eyebrow"><span class="sn">04</span><span class="en">Key technology</span><span class="zh">关键技术</span></div>
+    <h2><span class="en">Built on compiler truth</span><span class="zh">建立在编译器真相之上</span></h2>
+    <p class="sec-lede"><span class="en">Every capability flows from indexing what the compiler actually emits — post-preprocessor, config-resolved, symbol-disambiguated.</span><span class="zh">每一项能力都源自"索引编译器真正产出的东西"——预处理后、配置已解析、符号已消歧。</span></p>
+
+    <div class="grid">
+      <div class="card"><div class="em">🎯</div><h3><span class="en">Compiler-aware</span><span class="zh">编译器感知</span></h3><p><span class="en">Indexes post-preprocessor truth. A file changed but not built is a draft, not truth.</span><span class="zh">索引预处理后的真相。改了但没编译的文件只是草稿。</span></p></div>
+      <div class="card"><div class="em">🧩</div><h3><span class="en">Config-aware</span><span class="zh">配置感知</span></h3><p><span class="en">Only code your <code>defconfig</code> compiles. Dead <code>#ifdef</code> branches are excluded entirely.</span><span class="zh">只保留你的 <code>defconfig</code> 编译的代码。死 <code>#ifdef</code> 分支被整体排除。</span></p></div>
+      <div class="card"><div class="em">🔀</div><h3><span class="en">Macro-resolved</span><span class="zh">宏已展开</span></h3><p><span class="en"><code>EXPORT_SYMBOL</code>, <code>SYSCALL_DEFINE*</code>, <code>module_init</code> — expanded to real symbols with accurate positions.</span><span class="zh"><code>EXPORT_SYMBOL</code>、<code>SYSCALL_DEFINE*</code>、<code>module_init</code>——展开为真实符号，带准确位置。</span></p></div>
+      <div class="card star"><div class="em">🔗</div><h3><span class="en">Function-pointer-callable</span><span class="zh">函数指针可达</span></h3><p><span class="en"><code>ops_bind</code> edges resolve indirect calls through ops tables — the grep blind-spot.</span><span class="zh"><code>ops_bind</code> 边解析经 ops 表的间接调用——grep 的盲区。</span></p></div>
+      <div class="card"><div class="em">🗄️</div><h3><span class="en">SQLite-native</span><span class="zh">SQLite 原生</span></h3><p><span class="en">Single-file graph DB: WAL concurrency, recursive-CTE traversal, FTS5 symbol search.</span><span class="zh">单文件图数据库：WAL 并发、递归 CTE 遍历、FTS5 符号搜索。</span></p></div>
+      <div class="card"><div class="em">🔢</div><h3><span class="en">Per-TU disambiguation</span><span class="zh">逐 TU 消歧</span></h3><p><span class="en">Same-named <code>static</code> helpers in different translation units stay distinct, via clang symbol resolution.</span><span class="zh">不同翻译单元里同名的 <code>static</code> 辅助函数保持独立，靠 clang 符号解析。</span></p></div>
+    </div>
+
+    <div class="sub-h"><span class="en">ops_bind — following indirect calls</span><span class="zh">ops_bind —— 跟踪间接调用</span></div>
+    <div class="spot">
+      <div>
+        <div class="code">
+          <div class="bar"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i><span class="fn-name"><span class="en">grep vs KGraph</span><span class="zh">grep 对比 KGraph</span></span></div>
+<pre><span class="cm">// <span class="en">call site — grep sees this, can't resolve</span><span class="zh">调用点 —— grep 看得到，解析不出</span></span>
+<span class="kw">return</span> file-&gt;f_op-&gt;<span class="fn">read_iter</span>(file, iter);
+
+<span class="cm">// <span class="en">KernelGraph indexes the post-preprocessor source:</span><span class="zh">KernelGraph 索引预处理后的源码：</span></span>
+<span class="kw">struct</span> <span class="ty">file_operations</span> ext4_file_fops = {
+    .<span class="fn">read_iter</span> = <span class="fn">ext4_file_read_iter</span>,  <span class="cm">// ← ops_bind edge</span>
+};
+
+<span class="cm">// → find_ops_impls("read_iter"):</span>
+ext4_file_operations <span class="op">→</span> ext4_file_read_iter
+                   <span class="str">@ fs/ext4/file.c</span></pre>
+        </div>
+      </div>
+      <div>
+        <ul>
+          <li><span class="b red">✕</span><span><b><span class="en">grep:</span><span class="zh">grep：</span></b><span class="en">the call site <code>fop-&gt;read_iter()</code> has no impl name — untraceable.</span><span class="zh">调用点 <code>fop-&gt;read_iter()</code> 无实现名——无法追踪。</span></span></li>
+          <li><span class="b green">✓</span><span><b><span class="en">KGraph:</span><span class="zh">KGraph：</span></b><span class="en"><code>ops_bind</code> edges connect every ops-table field to its bound implementation, across the whole kernel.</span><span class="zh"><code>ops_bind</code> 边把每个 ops 表字段连到其绑定的实现，覆盖整个内核。</span></span></li>
+          <li><span class="b green">✓</span><span><span class="en"><code>find_callers</code> / <code>find_callees</code> traverse these edges, so indirect dispatch is captured in the call graph.</span><span class="zh"><code>find_callers</code> / <code>find_callees</code> 会遍历这些边，间接调用也进了调用图。</span></span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sub-h"><span class="en">Storage model — four tables, three layers</span><span class="zh">存储模型 —— 四张表，三层</span></div>
+    <p class="sec-lede" style="margin-bottom:24px"><span class="en">The graph you query (<code>symbols</code> + <code>edges</code>) is an abstraction over two grounding layers (<code>occurrences</code> + <code>files</code>) that pin it to real source.</span><span class="zh">你查询的图（<code>symbols</code> + <code>edges</code>）建立在两层锚定（<code>occurrences</code> + <code>files</code>）之上，那两层把它钉回真实源码。</span></p>
+    <div class="layers">
+      <div class="layer l1">
+        <div class="layer-tag"><span class="en">Graph layer</span><span class="zh">图层</span><span class="layer-sub"><span class="en">what you query</span><span class="zh">你查询的</span></span></div>
+        <div class="layer-tbls">
+          <div><code>symbols</code><span class="en"> — nodes (functions / vars / structs)</span><span class="zh"> —— 点（函数/变量/结构体）</span></div>
+          <div><code>edges</code><span class="en"> — links (calls / refs / ops_bind)</span><span class="zh"> —— 边（调用/引用/ops_bind）</span></div>
+        </div>
+      </div>
+      <div class="layer l2">
+        <div class="layer-tag"><span class="en">Grounding layer</span><span class="zh">锚定层</span><span class="layer-sub"><span class="en">backs the graph</span><span class="zh">支撑上图</span></span></div>
+        <div class="layer-tbls">
+          <div><code>occurrences</code><span class="en"> — precise positions + role (evidence)</span><span class="zh"> —— 精确位置+角色（证据）</span></div>
+          <div><code>files</code><span class="en"> — file containers / partition</span><span class="zh"> —— 文件容器/分区</span></div>
+        </div>
+      </div>
+      <div class="layer l3">
+        <div class="layer-tag"><span class="en">Source</span><span class="zh">源码</span><span class="layer-sub"><span class="en">on disk</span><span class="zh">磁盘</span></span></div>
+        <div class="layer-tbls"><div><span class="en" style="font-family:var(--mono);color:var(--muted)">.c / .h files</span><span class="zh" style="font-family:var(--mono);color:var(--muted)">.c / .h 文件</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── 05 MCP 工具接口 ───────────── -->
+<section id="tools">
+  <div class="wrap">
+    <div class="eyebrow"><span class="sn">05</span><span class="en">MCP tool interface</span><span class="zh">MCP 工具接口</span></div>
+    <h2><span class="en">13 MCP tools, token-budgeted by design</span><span class="zh">13 个 MCP 工具，为 token 预算而生</span></h2>
+    <p class="sec-lede"><span class="en">Tools accept <code>limit</code> and <code>summary</code> and return compact <code>name + file:line</code> by default — so agents pack maximum context per call.</span><span class="zh">工具接受 <code>limit</code> 和 <code>summary</code>，默认返回紧凑的 <code>name + file:line</code>——让 agent 每次调用塞进最多上下文。</span></p>
+    <div class="tools">
+      <div class="tool"><div class="n">search_symbols</div><div class="d"><span class="en">fuzzy name search (FTS5)</span><span class="zh">模糊名字搜索（FTS5）</span></div></div>
+      <div class="tool"><div class="n">get_symbol</div><div class="d"><span class="en">exact-name definition + signature</span><span class="zh">按精确名字取定义+签名</span></div></div>
+      <div class="tool"><div class="n">get_function_body</div><div class="d"><span class="en">read the source body from disk</span><span class="zh">从磁盘读源码函数体</span></div></div>
+      <div class="tool"><div class="n">find_callers</div><div class="d"><span class="en">reverse call graph (incl. ops_bind)</span><span class="zh">反向调用图（含 ops_bind）</span></div></div>
+      <div class="tool"><div class="n">find_callees</div><div class="d"><span class="en">forward call graph (incl. ops_bind)</span><span class="zh">前向调用图（含 ops_bind）</span></div></div>
+      <div class="tool"><div class="n">call_path</div><div class="d"><span class="en">shortest path between two functions</span><span class="zh">两函数间最短路径</span></div></div>
+      <div class="tool"><div class="n">get_callchain</div><div class="d"><span class="en">trace up to a root (syscall entry)</span><span class="zh">向上追溯到根（syscall 入口）</span></div></div>
+      <div class="tool"><div class="n">find_references</div><div class="d"><span class="en">every definition + use site</span><span class="zh">每个定义+使用点</span></div></div>
+      <div class="tool"><div class="n">find_type_definition</div><div class="d"><span class="en">go-to-type (type_of edges)</span><span class="zh">跳转到类型（type_of 边）</span></div></div>
+      <div class="tool"><div class="n">get_struct_layout</div><div class="d"><span class="en">struct fields (contains edges)</span><span class="zh">结构体字段（contains 边）</span></div></div>
+      <div class="tool star"><div class="n">★ find_ops_impls</div><div class="d"><span class="en">function-pointer field → implementations</span><span class="zh">函数指针字段 → 实现</span></div></div>
+      <div class="tool"><div class="n">get_neighborhood</div><div class="d"><span class="en">N-hop subgraph context pack</span><span class="zh">N 跳子图上下文包</span></div></div>
+      <div class="tool"><div class="n">index_status</div><div class="d"><span class="en">index metadata + edge breakdown</span><span class="zh">索引元数据+边分布</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── 06 效果展示 ───────────── -->
+<section id="results">
+  <div class="wrap">
+    <div class="eyebrow"><span class="sn">06</span><span class="en">Results — KBench Code-Retrieval</span><span class="zh">效果展示 —— KBench Code-Retrieval</span></div>
+    <h2><span class="en">Measured against grep, on real kernel tasks</span><span class="zh">在真实内核任务上，与 grep 实测对比</span></h2>
+    <p class="sec-lede"><span class="en">Same agent + same model, only variable = KGraph MCP on/off (<b>Arm A</b> grep/read baseline vs <b>Arm B</b> + KGraph). Numbers below are from <code>KBench</code> retrieval runs (model: glm-5).</span><span class="zh">同一 agent + 同一模型，唯一变量 = 是否接入 KGraph（<b>A 臂</b> grep/read 基线 vs <b>B 臂</b> +KGraph）。下列数字来自 <code>KBench</code> 检索评测（模型：glm-5）。</span></p>
+
+    <div class="sub-h"><span class="en">Arm summary (averaged)</span><span class="zh">两臂汇总（平均）</span></div>
+    <div class="res-card">
+      <table class="res-table">
+        <thead><tr>
+          <th class="l"><span class="en">Arm</span><span class="zh">测试臂</span></th>
+          <th><span class="en">Avg F1</span><span class="zh">平均 F1</span></th>
+          <th><span class="en">Avg tokens</span><span class="zh">平均 token</span></th>
+          <th><span class="en">Avg tool-calls</span><span class="zh">平均调用数</span></th>
+          <th><span class="en">Avg time (s)</span><span class="zh">平均耗时 (s)</span></th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="l"><span class="en">A — grep baseline</span><span class="zh">A —— grep 基线</span></td><td>1.0</td><td>10,978</td><td>5.0</td><td>65.3</td></tr>
+          <tr><td class="l hi"><span class="en">B — + KGraph</span><span class="zh">B —— + KGraph</span></td><td class="hi">1.0</td><td class="hi">4,375</td><td class="hi">1.0</td><td class="hi">10.3</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="tier-note"><b><span class="en">Honest tier split:</span><span class="zh">诚实的分层结论：</span></b><span class="en"> on <b>compiler-aware</b> tasks (indirect-call resolution — grep's blind spot) KGraph cuts tokens ~3.6×, tool-calls 9→1, time ~12×. On <b>direct</b> lookups grep is competitive (a single grep can be cheaper than one MCP call for a trivial name) — the win concentrates exactly where grep cannot follow.</span><span class="zh">在<b>编译器感知</b>任务（间接调用解析——grep 盲区）上，KGraph token ~3.6×、调用数 9→1、耗时 ~12×；在<b>直接</b>查找上 grep 有竞争力（对简单名字，一次 grep 比一次 MCP 调用还省）——收益正好集中在 grep 跟不住的地方。</span></div>
+
+    <div class="sub-h"><span class="en">Per task × arm</span><span class="zh">逐任务 × 臂</span></div>
+    <div class="res-card">
+      <table class="res-table">
+        <thead><tr>
+          <th class="l"><span class="en">Task (tier)</span><span class="zh">任务（分层）</span></th>
+          <th><span class="en">Arm</span><span class="zh">臂</span></th>
+          <th>F1</th><th><span class="en">Tokens</span><span class="zh">token</span></th>
+          <th><span class="en">Calls</span><span class="zh">调用</span></th>
+          <th><span class="en">Time</span><span class="zh">耗时</span></th>
+          <th><span class="en">Tools used</span><span class="zh">所用工具</span></th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="l" rowspan="2">ops_impls/read_iter<br><span class="mono" style="color:var(--amber)"><span class="en">compiler-aware</span><span class="zh">编译器感知</span></span></td>
+            <td><span class="en">A</span><span class="zh">A</span></td><td>1.0</td><td>21,130</td><td>9</td><td>114.0s</td><td class="l mono">grep:6, read:3</td></tr>
+          <tr><td class="hi"><span class="en">B</span><span class="zh">B</span></td><td class="hi">1.0</td><td class="hi">5,934</td><td class="hi">1</td><td class="hi">9.4s</td><td class="l mono" style="color:var(--teal)">find_ops_impls:1</td></tr>
+          <tr><td class="l" rowspan="2">symbol_def/vfs_read<br><span class="mono" style="color:var(--dim)"><span class="en">direct</span><span class="zh">直接</span></span></td>
+            <td><span class="en">A</span><span class="zh">A</span></td><td>1.0</td><td>827</td><td>1</td><td>16.6s</td><td class="l mono">grep:1</td></tr>
+          <tr><td><span class="en">B</span><span class="zh">B</span></td><td>1.0</td><td>2,816</td><td>1</td><td>11.3s</td><td class="l mono" style="color:var(--teal)">get_symbol:1</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="sub-h"><span class="en">Token cost on a compiler-aware task</span><span class="zh">编译器感知任务上的 token 成本</span></div>
+    <div class="bars">
+      <div>
+        <div class="lbl"><b><span class="en">B — KGraph</span><span class="zh">B —— KGraph</span></b><span class="tag">1 call</span></div>
+        <div class="track"><div class="fill lo">5,934 tokens</div></div>
+      </div>
+      <div>
+        <div class="lbl"><b><span class="en">A — grep</span><span class="zh">A —— grep</span></b><span class="tag">9 calls</span></div>
+        <div class="track"><div class="fill hi">21,130 tokens</div></div>
+      </div>
+    </div>
+    <p class="note" style="text-align:left;margin-top:18px"><span class="en">Benchmarked with <a href="https://github.com/ajksunkang-aios/KBench" target="_blank" rel="noopener">KBench</a> — the SWE-bench for Operating Systems. A/B arm methodology, N≥3 reps, median reported.</span><span class="zh">由 <a href="https://github.com/ajksunkang-aios/KBench" target="_blank" rel="noopener">KBench</a> 评测——操作系统领域的 SWE-bench。A/B 臂方法，N≥3 次取中位数。</span></p>
+  </div>
+</section>
+
+<!-- ───────────── 07 健康看板 ───────────── -->
+<section id="status">
+  <div class="wrap">
+    <div class="eyebrow"><span class="sn">07</span><span class="live-dot"></span><span class="en">Health dashboard</span><span class="zh">健康看板</span></div>
+    <h2><span class="en">Running on real mainline — every commit</span><span class="zh">每个 commit 都在真实主线内核上跑</span></h2>
+    <p class="sec-lede"><span class="en">Each CI run on <code>torvalds/linux</code> builds the kernel, indexes it with scip-clang, ingests into KGraph, and runs a synthetic retrieval canary. Live from <code>graphview/data/metrics.jsonl</code>.</span><span class="zh">每次在 <code>torvalds/linux</code> 上的 CI：构建内核 → scip-clang 索引 → 入库 → 跑合成检索金丝雀。实时取自 <code>graphview/data/metrics.jsonl</code>。</span></p>
+    <div class="dash">
+      <div class="d-cards" id="dCards"></div>
+      <div class="d-table-wrap">
+        <table class="d-table">
+          <thead><tr>
+            <th class="l"><span class="en">When (UTC)</span><span class="zh">时间 (UTC)</span></th><th class="l">HEAD</th>
+            <th><span class="en">Buildable</span><span class="zh">可构建</span></th><th><span class="en">Canary</span><span class="zh">金丝雀</span></th>
+            <th><span class="en">Symbols</span><span class="zh">符号</span></th><th><span class="en">Edges</span><span class="zh">边</span></th><th>ops_bind</th><th>contains</th>
+            <th>DB MB</th><th><span class="en">build/scip/ingest (s)</span><span class="zh">构建/索引/入库</span></th>
+          </tr></thead>
+          <tbody id="dRows"></tbody>
+        </table>
+      </div>
+      <p class="d-foot">
+        <span class="en">Buildable = make + scip-clang index + kgraph ingest all succeeded. &middot; Canary = synthetic retrieval known-answer checks (M/N). &middot;</span><span class="zh">可构建 = make + scip-clang 索引 + kgraph 入库 全部成功。&middot; 金丝雀 = 合成检索已知答案检查 (M/N)。&middot;</span>
+        <a href="graphview/index.html"><span class="en">Full dashboard &nearr;</span><span class="zh">完整仪表盘 &nearr;</span></a> &middot;
+        <a href="graphview/graph.html"><span class="en">Graph explorer &nearr;</span><span class="zh">图浏览器 &nearr;</span></a>
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── 08 快速开始 ───────────── -->
+<section id="start">
+  <div class="wrap">
+    <div class="eyebrow"><span class="sn">08</span><span class="en">Quickstart</span><span class="zh">快速开始</span></div>
+    <h2><span class="en">Three commands to a queryable kernel</span><span class="zh">三步命令，得到可查询的内核</span></h2>
+    <p class="sec-lede"><span class="en">Once your kernel has a <code>compile_commands.json</code>, setup is three commands. Bundles Python 3.10 + scip-clang — <strong>Linux x86-64 only</strong>.</span><span class="zh">内核有了 <code>compile_commands.json</code> 后，三步即可。内置 Python 3.10 + scip-clang——<strong>仅 Linux x86-64</strong>。</span></p>
+    <div class="steps">
+      <div class="step"><div class="n"></div><div class="body"><code>npm install -g @ajksunkang-aios/kgraph</code><div class="hint"><span class="en">Installs the shim + platform bundle (Python 3.10 + scip-clang).</span><span class="zh">安装 shim + 平台 bundle（Python 3.10 + scip-clang）。</span></div></div></div>
+      <div class="step"><div class="n"></div><div class="body"><code>kgraph install</code><div class="hint"><span class="en">Auto-wires the MCP server into your agents (Claude, Cursor, Codex…).</span><span class="zh">自动把 MCP server 接入你的 agent（Claude、Cursor、Codex…）。</span></div></div></div>
+      <div class="step"><div class="n"></div><div class="body"><code>cd /path/to/linux &amp;&amp; kgraph init .</code><div class="hint"><span class="en">Builds the graph. Needs <code>compile_commands.json</code> (run <code>make CC=clang LLVM=1</code> + <code>scripts/clang-tools/gen_compile_commands.py</code> first).</span><span class="zh">构建图。需要 <code>compile_commands.json</code>（先 <code>make CC=clang LLVM=1</code> + <code>scripts/clang-tools/gen_compile_commands.py</code>）。</span></div></div></div>
+    </div>
+    <p style="margin-top:26px;color:var(--muted);font-size:15px"><span class="en">Then restart your agent and ask structural questions — it calls KGraph instead of grepping:</span><span class="zh">然后重启 agent，问它结构化问题——它会调 KGraph 而非 grep：</span></p>
+    <div class="code" style="margin-top:14px">
+      <div class="bar"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i><span class="fn-name"><span class="en">ask your agent</span><span class="zh">问你的 agent</span></span></div>
+<pre><span class="op">&gt;</span> <span class="en">What functions call</span><span class="zh">哪些函数调用</span> <span class="fn">ext4_file_read_iter</span>?
+<span class="op">&gt;</span> <span class="en">What implements</span><span class="zh">什么实现了</span> <span class="op">-&gt;read_iter</span> <span class="en">across the kernel?</span><span class="zh">（全内核）？</span>
+<span class="op">&gt;</span> <span class="en">Show me the body of</span><span class="zh">给我看</span> <span class="fn">generic_file_read_iter</span>.</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── 09 未来工作 ───────────── -->
+<section id="future">
+  <div class="wrap">
+    <div class="eyebrow"><span class="sn">09</span><span class="en">Future work</span><span class="zh">未来工作</span></div>
+    <h2><span class="en">KGraph — next steps</span><span class="zh">KGraph 下一步工作</span></h2>
+    <p class="sec-lede"><span class="en">The foundation — compiler-aware indexing + MCP tooling — is in place. Below is what comes next.</span><span class="zh">基础（编译器感知索引 + MCP 工具）已就位。以下是下一步工作。</span></p>
+    <div class="roadmap">
+      <div class="rm-row">
+        <div class="rm-n">01</div>
+        <div class="rm-body">
+          <div class="rm-title"><span class="en">lazy-indexing + ingest performance</span><span class="zh">lazy-indexing 增量索引 + 入库性能优化</span></div>
+          <div class="rm-desc"><span class="en">Support a lazy-indexing incremental update mode, and keep optimizing ingestion performance during graph building.</span><span class="zh">支持 lazy-indexing 增量索引模式，并持续优化建图阶段的入库性能。</span></div>
+        </div>
+        <div class="rm-area"><span class="en">Performance</span><span class="zh">性能</span></div>
+      </div>
+      <div class="rm-row">
+        <div class="rm-n">02</div>
+        <div class="rm-body">
+          <div class="rm-title"><span class="en">KBench metrics — tool-calls / tokens / latency vs baseline</span><span class="zh">KBench 测试套：tool-call / token / 耗时，对比 baseline</span></div>
+          <div class="rm-desc"><span class="en">Complete KBench measurement of tool-call count, token consumption, and latency — and compare against the baseline.</span><span class="zh">完成 KBench 对工具调用次数、token 消耗与耗时的度量，并与 baseline 做对比。</span></div>
+        </div>
+        <div class="rm-area"><span class="en">Evaluation</span><span class="zh">评测</span></div>
+      </div>
+      <div class="rm-row">
+        <div class="rm-n">03</div>
+        <div class="rm-body">
+          <div class="rm-title"><span class="en">Versioned graph &amp; rollback</span><span class="zh">代码图谱的版本化与回滚</span></div>
+          <div class="rm-desc"><span class="en">Versioned graph design with rollback — resilience for fault / disaster scenarios.</span><span class="zh">代码图谱的版本化设计与回滚，支持故障现场的应对与可恢复性。</span></div>
+        </div>
+        <div class="rm-area"><span class="en">Reliability</span><span class="zh">可靠性</span></div>
+      </div>
+      <div class="rm-row">
+        <div class="rm-n">04</div>
+        <div class="rm-body">
+          <div class="rm-title"><span class="en">Authentication &amp; authorization</span><span class="zh">认证与授权机制</span></div>
+          <div class="rm-desc"><span class="en">Introduce auth &amp; authorization to protect KGraph as a core asset.</span><span class="zh">引入认证与授权机制，将作为核心资产的 KGraph 予以保护。</span></div>
+        </div>
+        <div class="rm-area"><span class="en">Security</span><span class="zh">安全</span></div>
+      </div>
+      <div class="rm-row">
+        <div class="rm-n">05</div>
+        <div class="rm-body">
+          <div class="rm-title"><span class="en">Publish to the Linux community + Kconfig <code>make kgraph</code></span><span class="zh">发布 Linux 社区 + Kconfig 集成 <code>make kgraph</code></span></div>
+          <div class="rm-desc"><span class="en">Publish to the Linux community; integrate with Kconfig to support a <code>make kgraph</code> target.</span><span class="zh">发布到 Linux 社区，集成 Kconfig，支持 <code>make kgraph</code> 能力。</span></div>
+        </div>
+        <div class="rm-area"><span class="en">Community</span><span class="zh">社区</span></div>
+      </div>
+      <div class="rm-row">
+        <div class="rm-n">06</div>
+        <div class="rm-body">
+          <div class="rm-title"><span class="en">Extend to eBPF DSL</span><span class="zh">扩展 eBPF DSL 能力代码图谱</span></div>
+          <div class="rm-desc"><span class="en">Extend the code graph to eBPF DSL programs.</span><span class="zh">扩展 eBPF DSL 能力的代码图谱。</span></div>
+        </div>
+        <div class="rm-area"><span class="en">Extension</span><span class="zh">扩展</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-in">
+    <a class="brand" href="#"><span class="dot"></span>KernelGraph</a>
+    <div class="foot-links">
+      <a href="https://github.com/ajksunkang-aios/KGraph" target="_blank" rel="noopener">GitHub ↗</a>
+      <a href="https://www.npmjs.com/package/@ajksunkang-aios/kgraph" target="_blank" rel="noopener">npm ↗</a>
+      <a href="https://github.com/ajksunkang-aios/KGraph/blob/main/docs/DESIGN.md" target="_blank" rel="noopener"><span class="en">Design doc</span><span class="zh">设计文档</span> ↗</a>
+      <a href="https://github.com/ajksunkang-aios/KBench" target="_blank" rel="noopener">KBench ↗</a>
+    </div>
+    <span style="color:var(--dim)">MIT License</span>
+  </div>
+  <p class="note"><span class="en">KernelGraph indexes what the <strong style="color:var(--text)">compiler</strong> sees — not what the parser guesses.<br>Benchmarked with <a href="https://github.com/ajksunkang-aios/KBench" target="_blank" rel="noopener">KBench</a> — the SWE-bench for Operating Systems.</span><span class="zh">KernelGraph 索引<strong style="color:var(--text)">编译器</strong>看到的真相——不是解析器猜的。<br>由 <a href="https://github.com/ajksunkang-aios/KBench" target="_blank" rel="noopener">KBench</a> 评测——操作系统领域的 SWE-bench。</span></p>
+</footer>
+
+<script>
+"use strict";
+// Presentation / deck mode — the hero (title) + the 9 numbered sections each
+// become a full-viewport slide. Keys: →/Space/PageDown = next, ←/PageUp = prev,
+// Home/End = first/last, Esc = exit, F = toggle fullscreen.
+(function () {
+  const IDS = ["problem","positioning","deploy","tech","tools","results","status","start","future"];
+  const slides = [document.querySelector("header.hero")]
+    .concat(IDS.map(id => document.getElementById(id))).filter(Boolean);
+  if (slides.length < 2) return;
+  let i = 0, weEnteredFs = false;
+  const body = document.body;
+  const prog = document.querySelector(".deck-progress");
+  const count = document.getElementById("deckCount");
+
+  function show(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, idx) => s.classList.toggle("slide-on", idx === i));
+    if (prog) prog.style.width = ((i + 1) / slides.length * 100) + "%";
+    if (count) count.textContent = (i + 1) + " / " + slides.length;
+    const cur = slides[i];
+    if (cur) cur.scrollTop = 0;
+  }
+  function enter() {
+    body.classList.add("present");
+    show(0);
+    const el = document.documentElement;
+    if (el.requestFullscreen) {
+      const p = el.requestFullscreen();
+      if (p && p.catch) p.catch(() => {});
+      weEnteredFs = true;
+    }
+  }
+  function exit() {
+    body.classList.remove("present");
+    slides.forEach(s => s.classList.remove("slide-on"));
+    if (weEnteredFs && document.exitFullscreen) { try { document.exitFullscreen(); } catch (e) {} weEnteredFs = false; }
+  }
+  const enterBtn = document.getElementById("presentBtn");
+  const exitBtn = document.getElementById("deckExit");
+  if (enterBtn) enterBtn.addEventListener("click", enter);
+  if (exitBtn) exitBtn.addEventListener("click", exit);
+  const prevBtn = document.getElementById("deckPrev");
+  const nextBtn = document.getElementById("deckNext");
+  if (prevBtn) prevBtn.addEventListener("click", () => show(i - 1));
+  if (nextBtn) nextBtn.addEventListener("click", () => show(i + 1));
+  document.addEventListener("keydown", (e) => {
+    if (!body.classList.contains("present")) return;
+    const k = e.key;
+    if (k === "ArrowRight" || k === "ArrowDown" || k === "PageDown" || k === " ") { e.preventDefault(); show(i + 1); }
+    else if (k === "ArrowLeft" || k === "ArrowUp" || k === "PageUp") { e.preventDefault(); show(i - 1); }
+    else if (k === "Home") { show(0); }
+    else if (k === "End") { show(slides.length - 1); }
+    else if (k === "Escape") { exit(); }
+    else if (k === "f" || k === "F") {
+      if (document.fullscreenElement) { try { document.exitFullscreen(); } catch (e) {} }
+      else if (document.documentElement.requestFullscreen) { document.documentElement.requestFullscreen(); }
+    }
+  });
+})();
+</script>
+
+<script>
+"use strict";
+(function () {
+  const t = document.getElementById("langToggle");
+  const saved = localStorage.getItem("kgraph-lang");
+  if (saved === "zh") { document.body.classList.add("zh"); document.documentElement.lang = "zh"; if (t) t.textContent = "EN"; }
+  if (t) t.addEventListener("click", () => {
+    const zh = document.body.classList.toggle("zh");
+    document.documentElement.lang = zh ? "zh" : "en";
+    t.textContent = zh ? "EN" : "中文";
+    localStorage.setItem("kgraph-lang", zh ? "zh" : "en");
+  });
+})();
+</script>
+
+<script>
+"use strict";
+(function () {
+  const ROWS = 7;
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const fmtNum = (n) => (typeof n === "number") ? n.toLocaleString("en-US") : "—";
+  const fmtDur = (b, s, i) => {
+    const f = (x) => (typeof x === "number" && x > 0) ? Math.round(x) : "—";
+    return `${f(b)} / ${f(s)} / ${f(i)}`;
+  };
+  const pill = (ok, txt) => `<span class="dpill ${ok ? "ok" : "bad"}">${txt}</span>`;
+  const card = (k, v, mono) => `<div class="d-card"><div class="k">${k}</div><div class="v${mono ? " mono" : ""}">${v}</div></div>`;
+  function render(runs) {
+    if (!runs.length) { $("dRows").innerHTML = `<tr><td colspan="10" class="d-none">No runs yet.</td></tr>`; $("dCards").innerHTML = ""; return; }
+    const last = runs[runs.length - 1];
+    const last7 = runs.slice(-ROWS).reverse();
+    const buildable = last7.filter((r) => r.buildable).length;
+    const benched = last7.filter((r) => r.benchmark_ok).length;
+    $("dCards").innerHTML = [
+      card("Latest HEAD", esc(last.head || "—"), true),
+      card("Buildable (7d)", `${buildable}/${last7.length}`),
+      card("Canary (7d)", `${benched}/${last7.length}`),
+      card("Symbols", fmtNum(last.symbols)),
+    ].join("");
+    $("dRows").innerHTML = last7.map((r) => `<tr>
+      <td class="l">${esc((r.ts || "").replace("T", " ").slice(0, 19))}</td>
+      <td class="l mono">${esc(r.head || "—")}</td>
+      <td>${pill(r.buildable, r.buildable ? "OK" : "FAIL")}</td>
+      <td>${pill(r.benchmark_ok, `${r.benchmark_pass}/${r.benchmark_total}`)}</td>
+      <td>${fmtNum(r.symbols)}</td><td>${fmtNum(r.edges)}</td>
+      <td>${fmtNum(r.ops_bind)}</td><td>${fmtNum(r.contains)}</td>
+      <td>${r.db_mb ?? "—"}</td><td>${fmtDur(r.build_s, r.scip_s, r.ingest_s)}</td>
+    </tr>`).join("");
+  }
+  async function main() {
+    try {
+      const res = await fetch("graphview/data/metrics.jsonl", { cache: "no-store" });
+      if (!res.ok) throw new Error(res.status);
+      const text = await res.text();
+      const runs = text.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => JSON.parse(l));
+      render(runs);
+    } catch (e) {
+      $("dRows").innerHTML = `<tr><td colspan="10" class="d-none">Could not load <span style="font-family:var(--mono)">graphview/data/metrics.jsonl</span> (${esc(e.message)}). Serve over HTTP, e.g. <span style="font-family:var(--mono)">python3 -m http.server</span>.</td></tr>`;
+    }
+  }
+  main();
+})();
+</script>
+
+</body>
+</html>
