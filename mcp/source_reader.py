@@ -69,3 +69,43 @@ def read_source_with_lineno(project_root: Path, rel_path: str,
         out.append(f"{lineno:6d}\t{line}")
         lineno += 1
     return "\n".join(out)
+
+
+def read_source_by_grep(project_root: Path, rel_path: str,
+                        symbol_name: str, max_lines: int = 60) -> Optional[str]:
+    """
+    Live fallback for a possibly-stale indexed location.
+
+    When the file is flagged unstable (modified since the index), the indexed
+    def line range can't be trusted. Instead, grep the symbol name in the
+    on-disk file and return the first match line + `max_lines` after it (a
+    heuristic body extent), with 1-based lineno prefix.
+
+    Returns None if the file/symbol can't be found.
+    """
+    if not symbol_name:
+        return None
+    abs_path = project_root / rel_path
+    if not abs_path.is_file():
+        return None
+    try:
+        with open(abs_path, "r", errors="replace") as f:
+            lines = f.readlines()
+    except OSError:
+        return None
+
+    match_idx = -1
+    for i, ln in enumerate(lines):
+        if symbol_name in ln:
+            match_idx = i
+            break
+    if match_idx < 0:
+        return None
+
+    end = min(len(lines), match_idx + max_lines)
+    out = []
+    lineno = match_idx + 1  # 1-based
+    for ln in lines[match_idx:end]:
+        out.append(f"{lineno:6d}\t{ln.rstrip()}")
+        lineno += 1
+    return "\n".join(out)

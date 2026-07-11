@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
@@ -56,6 +57,7 @@ _sr_spec = _ilu.spec_from_file_location(
 _sr = _ilu.module_from_spec(_sr_spec)
 _sr_spec.loader.exec_module(_sr)
 read_source_with_lineno = _sr.read_source_with_lineno
+read_source_by_grep = _sr.read_source_by_grep
 
 
 # ──────────────────────────────────────────────
@@ -96,6 +98,98 @@ def get_store() -> SQLiteStore:
             )
         _store = SQLiteStore(DB_PATH)
     return _store
+
+
+# ──────────────────────────────────────────────
+# Stale-file detection (live, per query — no cache/zone)
+# ──────────────────────────────────────────────
+
+def is_file_stale(project_root: Path, rel_path: Optional[str],
+                  baseline_ts: int) -> bool:
+    """True if the on-disk file's mtime is after the index baseline."""
+    if not rel_path or not baseline_ts:
+        return False
+    try:
+        return os.path.getmtime(os.path.join(str(project_root), rel_path)) > baseline_ts
+    except OSError:
+        return False
+
+
+def _index_timestamp(store: SQLiteStore) -> int:
+    try:
+        return int(float(store.get_metadata().get("index_timestamp") or 0))
+    except (ValueError, TypeError):
+        return 0
+
+
+def _git_file_status(project_root: Path, rel_path: str) -> Optional[str]:
+    """Single-file `git status --porcelain -- <file>`. Returns the 2-char XY
+    code (e.g. ' M' worktree-modified, 'M ' staged, '??' untracked), or None
+    if clean / not a git repo / git unavailable."""
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(project_root), "status", "--porcelain", "--", rel_path],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    # porcelain XY code is the first 2 chars; the leading space is significant
+    # (' M' = worktree-modified, 'M ' = staged) — do NOT lstrip it.
+    if not r.stdout.strip():
+        return None
+    return r.stdout[:2]
+
+
+def _is_stale(def_file_path: Optional[str]) -> Optional[str]:
+    """Live staleness check (no caching). Returns a reason string if the file
+    changed since the index, else None.
+
+    Two gates (mtime → git status): mtime is the cheap stat that catches ANY
+    change since the index (incl. committed). When mtime says changed, a
+    single-file `git status -- <file>` refines the reason — the git critical
+    section (uncommitted) is the 'dirty zone'. git status does NOT override the
+    stale decision: a committed-since-index change is still stale (reason
+    'mtime'), it just isn't an uncommitted draft.
+    """
+    if not def_file_path:
+        return None
+    try:
+        store = get_store()
+    except Exception:
+        return None
+    if not is_file_stale(PROJECT_ROOT, def_file_path, _index_timestamp(store)):
+        return None
+    # mtime says changed → stale. Refine the reason via single-file git status.
+    code = _git_file_status(PROJECT_ROOT, def_file_path)
+    if code is None:
+        return "mtime"              # non-git repo, or committed since index
+    if code == "??":
+        return "untracked"
+    if code[1] not in (" ", "?"):   # worktree (uncommitted) change
+        return "working_tree"
+    if code[0] not in (" ", "?"):   # staged change
+        return "staged"
+    return "mtime"
+
+
+def _stale_check(def_file_path: Optional[str]) -> str:
+    """Live stale banner for a file (empty string if not stale)."""
+    reason = _is_stale(def_file_path)
+    if reason:
+        return (f"\n⚠ {def_file_path} modified since index ({reason}) — indexed "
+                f"result may be stale; read/grep the file for live content.")
+    return ""
+
+
+def _center_def_file(store: SQLiteStore, scip_symbol: str) -> Optional[str]:
+    """def_file_path for a resolved symbol (for stale-check on graph tools)."""
+    try:
+        loc = store.get_definition_location(scip_symbol)
+        return loc.get("def_file_path") if loc else None
+    except Exception:
+        return None
 
 
 # ──────────────────────────────────────────────
@@ -167,7 +261,8 @@ def get_symbol(name: str, kind: Optional[str] = None, limit: int = 10) -> str:
     results = store.get_symbol(name, kind=kind, limit=limit)
     if not results:
         return f"No symbol named '{name}'" + (f" (kind={kind})" if kind else "")
-    return _format_symbol_list(results, include_scip=True)
+    banner = _stale_check(results[0].get("def_file_path"))
+    return _format_symbol_list(results, include_scip=True) + banner
 
 
 @mcp.tool()
@@ -201,17 +296,26 @@ def get_function_body(name: str, kind: Optional[str] = None,
                     f"(external or header-only). scip_symbol: {candidates[0]['scip_symbol']}")
         return f"No symbol named '{name}'"
 
-    body = read_source_with_lineno(
-        PROJECT_ROOT,
-        target["def_file_path"],
-        target["def_start_line"],
-        target.get("def_end_line", target["def_start_line"]),
-        context=context,
-    )
+    rel = target["def_file_path"]
     header = (f"// {target['name']} ({target['kind']}) "
-              f"@ {target['def_file_path']}:{target['def_start_line'] + 1}\n")
+              f"@ {rel}:{target['def_start_line'] + 1}\n")
+
+    # Stale-file handling: if the file changed after indexing, the indexed def
+    # line range can't be trusted → grep the live file instead.
+    reason = _is_stale(rel)
+    if reason:
+        live = read_source_by_grep(PROJECT_ROOT, rel, target["name"])
+        if live is not None:
+            return (header + f"// ⚠ file modified since index ({reason}) — showing "
+                    "LIVE content (grep fallback):\n" + live)
+        header += f"// ⚠ file modified since index ({reason}); live grep failed — indexed lines may be off.\n"
+
+    body = read_source_with_lineno(
+        PROJECT_ROOT, rel, target["def_start_line"],
+        target.get("def_end_line", target["def_start_line"]), context=context,
+    )
     if body is None:
-        return header + f"// (source file not readable at {PROJECT_ROOT / target['def_file_path']})"
+        return header + f"// (source file not readable at {PROJECT_ROOT / rel})"
     return header + body
 
 
@@ -239,7 +343,7 @@ def find_callers(name: str, depth: int = 1, limit: int = 50) -> str:
     results = store.find_callers(scip, depth=depth, limit=limit)
     if not results:
         return f"No callers found for '{name}'"
-    return _format_edge_list(results, direction="caller")
+    return _format_edge_list(results, direction="caller") + _stale_check(_center_def_file(store, scip))
 
 
 @mcp.tool()
@@ -263,7 +367,7 @@ def find_callees(name: str, depth: int = 1, limit: int = 50) -> str:
     results = store.find_callees(scip, depth=depth, limit=limit)
     if not results:
         return f"No callees found for '{name}'"
-    return _format_edge_list(results, direction="callee")
+    return _format_edge_list(results, direction="callee") + _stale_check(_center_def_file(store, scip))
 
 
 @mcp.tool()
@@ -360,7 +464,7 @@ def find_references(name: str, limit: int = 100) -> str:
         enc = r.get("enclosing_name") or "(file scope)"
         lines.append(f"  [{role}] {r['file_path']}:{r['start_line'] + 1} "
                      f"in {enc}")
-    return "\n".join(lines)
+    return "\n".join(lines) + _stale_check(_center_def_file(store, scip))
 
 
 @mcp.tool()
@@ -414,7 +518,7 @@ def get_struct_layout(name: str) -> str:
     for fld in fields:
         sig = f" — {fld['signature']}" if fld.get("signature") else ""
         lines.append(f"  .{fld['name']} ({fld['kind']}){sig}")
-    return "\n".join(lines)
+    return "\n".join(lines) + _stale_check(_center_def_file(store, scip))
 
 
 # ── Kernel-specific: indirect-call resolution ──
