@@ -171,57 +171,66 @@ P7. 更新基线
 - `meta.index_timestamp` → 重命名/扩展为 `last_index_timestamp` + 新增 `last_index_commit`
 - 文件级外键 `file_id` / `def_file_id` → 增量删除的粒度基础
 
-**需新增**：
+**需新增（sync 用）**：
 ```sql
--- 不稳定文件清单（dirty，grep fallback）
-CREATE TABLE unstable_files(
-  path        TEXT PRIMARY KEY,
-  reason      TEXT,        -- 'working_tree' | 'staged' | 'build_failed'
-  detected_at INTEGER
-);
-
--- files 表补充
-ALTER TABLE files ADD COLUMN indexed_at INTEGER;   -- 该文件最后索引时间
-ALTER TABLE files ADD COLUMN content_sha TEXT;     -- 内容 hash（或复用 sha）
+-- meta 键通过 INSERT OR REPLACE 惰性写入：
+--   last_index_commit, config_sha
+-- （index_timestamp 保留，供查询侧 stale 检测做基线）
 ```
+
+> **查询侧脏数据检测：已实现（live，无 zone 表）。** `mcp/server.py` 的 `_is_stale()`
+> 每次查询做 mtime → git status 两段检测；`get_function_body` 走 `read_source_by_grep`
+> 实时 grep fallback；其它工具追加 stale banner。原方案的 `unstable_files` 表已删除——
+> 按查询 live 检测更简单、无 schema 改动、读路径零写（见提交 `feat/stale-file-detection`）。
 
 **新增代码模块**：
 ```
 src/sync/
-├── change_detector.py   # P2-P3: mtime 扫描 + git 稳定性过滤 + hash 比对
-├── incremental.py       # P4-P5: filtered compile_commands + 局部 scip-clang + 事务灌库
-└── git_status.py        # git diff / status 封装（稳定性判定）
+├── change_detector.py   # P2: 解析 compile_commands → .o mtime → 找重编 TU → filtered compdb
+├── incremental.py       # P4-P5: 局部 scip-clang + 事务化 per-file 灌库
+└── git_status.py        # git status 封装（P3 稳定性判定）
 ```
 
-**SQLiteStore 新增方法**：
+**SQLiteStore 新增方法**（sync/增量用）：
 ```python
 delete_file_records(file_path)      # 删 occurrences + edges（不删 symbols）
 upsert_symbol(...)                   # scip_symbol 不变则复用 id
-mark_unstable(paths, reason)         # 写 unstable_files
-get_unstable_files()                 # MCP banner 用
-get_file_sha(path) / set_file_sha    # hash 比对
 ```
-
-**MCP server 改动**：
-查询返回前调 `get_unstable_files()`，若命中目标文件则加 grep fallback banner。
 
 ---
 
-## 7. 触发方式：如何「在 make 流水线自动隐藏索引更新」
+## 7. 触发方式：解耦的 `kgraph sync`（不做 make 包装器）
 
-三个选项，按侵入性排序：
+KGraph 不应包装或拥有内核构建的调用。内核构建（kbuild）复杂且版本相关
+（make / `make O=` / ninja / 交叉编译 / 发行版脚本 / CI）；`kgraph build -- make`
+包装器需要忠实转发所有这些（参数/cwd/env/构建目录），且要随 kbuild 演进持续适配
+——脆弱、高成本耦合，无功能收益。**KGraph 依赖构建的*产物*（重编的 `.o` + 有效的
+`compile_commands.json`），不是*怎么*调的。**
 
-| 方式 | 侵入性 | 说明 |
+所以只有一个机制：**`kgraph sync`**——解耦的 post-build 步骤，读取构建产物、增量刷新
+图谱。「隐藏到构建流程里」靠*流水线调* sync 实现，不是 KGraph 包装 make。
+
+| 集成方式 | 谁调 sync | 与 kbuild 耦合 |
 |---|---|---|
-| **A. `kgraph build` 包装器**（推荐） | 低 | `kgraph build -- make CC=clang LLVM=1 -j$(nproc)`：记录 pre-build 基线 → 透传执行 make → 后置触发 P1-P7。用户只需把 `make` 换成 `kgraph build -- make` |
-| **B. 显式 `kgraph sync`** | 零 | 用户构建后手动跑 `kgraph sync`，自己比对 mtime+git 增量更新。最简单，但需用户记得 |
-| **C. git hook（post-commit/post-merge）** | 中 | 提交/拉取后触发。但 git 事件 ≠ 构建事件，文件可能还没编译，与「编译器对齐」哲学冲突 |
+| Shell：`make && kgraph sync`（或 alias） | 开发者 | 无 |
+| Makefile post 目标（如 `kgraph-sync` 目标 exec `kgraph sync`） | 内核构建系统（用户加的） | 无——KGraph 只是被调 |
+| CI：构建步骤 → `kgraph sync` 步骤 | CI 流水线 | 无 |
+| KBench：构建后、commit 间跑 `kgraph sync` | KBench | 无 |
 
-**推荐 A + B 组合**：
-- `kgraph build -- <make命令>` 做到「make 流水线自动隐藏索引更新」（用户诉求）
-- `kgraph sync` 作为兜底，任何时候手动触发增量
+**已删除：`kgraph build -- make` 包装器。** 它把 KGraph 和内核构建机制耦合、且把
+KGraph 放进了构建关键路径（make 卡住/崩溃，wrapper 脱不了干系），收益仅"一条命令变两条"。
+`make && kgraph sync` 同样自动、零耦合，构建和索引各管各的。
 
-**不推荐 C**：git 提交时文件未必编译过，违背「只索引编译真相」原则。
+**延迟注意：** `make && kgraph sync` 串行跑。为不拖慢整体流程，sync 必须增量、秒级
+（正比于变化的 TU——见 §4 / §8.1）。全量重建（≈16 分钟）会本末倒置；整个设计的根基
+就是 sync 便宜。异步/后台 sync（`make && kgraph sync &`）是后续优化；MVP 先做阻塞式
+增量。
+
+**不推荐：git hook（post-commit/post-merge）。** 提交时文件可能还没编译过，违背"只索引
+编译真相"。sync 以构建已发生为前提（读重编的 `.o`）；git hook 保证不了这个。
+
+> "构建驱动"指的是构建*已经发生*（产物存在、编译真相已确立）——**不是** KGraph *去跑*
+> 构建。触发 = 流水线在 make 后调 `sync`；KGraph 从不拥有或包装构建。
 
 ---
 

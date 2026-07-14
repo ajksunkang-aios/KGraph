@@ -172,57 +172,78 @@ Otherwise edges from other files pointing to these symbols would all dangle.
 - `meta.index_timestamp` → rename/extend to `last_index_timestamp` + add `last_index_commit`
 - File-level foreign keys `file_id` / `def_file_id` → the granularity basis for incremental deletion
 
-**To add**:
+**To add (for sync)**:
 ```sql
--- Unstable file list (dirty, grep fallback)
-CREATE TABLE unstable_files(
-  path        TEXT PRIMARY KEY,
-  reason      TEXT,        -- 'working_tree' | 'staged' | 'build_failed'
-  detected_at INTEGER
-);
-
--- files table additions
-ALTER TABLE files ADD COLUMN indexed_at INTEGER;   -- last time this file was indexed
-ALTER TABLE files ADD COLUMN content_sha TEXT;     -- content hash (or reuse sha)
+-- meta keys added lazily via INSERT OR REPLACE:
+--   last_index_commit, config_sha
+-- (index_timestamp stays for back-compat + query-side stale detection baseline)
 ```
+
+> **Query-side stale detection: IMPLEMENTED (live, no zone table).** `_is_stale()` in
+> `mcp/server.py` does mtime → git status two-gate detection per query; `get_function_body`
+> falls back to `read_source_by_grep`; other tools append a stale banner. The earlier-proposed
+> `unstable_files` table was dropped — per-query live detection is simpler, needs no schema
+> change, and writes nothing on the read path (see commit `feat/stale-file-detection`).
 
 **New code modules**:
 ```
 src/sync/
-├── change_detector.py   # P2-P3: mtime scan + git stability filtering + hash comparison
-├── incremental.py       # P4-P5: filtered compile_commands + localized scip-clang + transactional ingestion
-└── git_status.py        # git diff / status wrapper (stability determination)
+├── change_detector.py   # P2: parse compile_commands → .o mtime → find rebuilt TUs → filtered compdb
+├── incremental.py       # P4-P5: localized scip-clang + transactional per-file ingestion
+└── git_status.py        # git status wrapper (stability determination for P3)
 ```
 
-**New SQLiteStore methods**:
+**New SQLiteStore methods** (for sync/incremental):
 ```python
 delete_file_records(file_path)      # delete occurrences + edges (not symbols)
 upsert_symbol(...)                   # reuse the id if scip_symbol is unchanged
-mark_unstable(paths, reason)         # write unstable_files
-get_unstable_files()                 # for the MCP banner
-get_file_sha(path) / set_file_sha    # hash comparison
 ```
-
-**MCP server changes**:
-Before returning a query, call `get_unstable_files()`; if the target file is hit, append a grep fallback banner.
 
 ---
 
-## 7. Trigger Mechanism: How to "Hide Index Updates Inside the make Pipeline"
+## 7. Trigger Mechanism: Decoupled `kgraph sync` (no make-wrapper)
 
-Three options, ordered by intrusiveness:
+KGraph must NOT wrap or own the kernel's build invocation. The kernel build
+(kbuild) is complex and version-specific (`make` / `make O=` / `ninja` /
+cross-compile / distro build scripts / CI); a `kgraph build -- make` wrapper
+would have to faithfully forward all of that (args, cwd, env, build dir) and keep
+adapting as kbuild evolves — a fragile, high-cost coupling with no functional
+benefit. **KGraph depends on the build's *outcome* (rebuilt `.o` + a valid
+`compile_commands.json`), not on *how* it was invoked.**
 
-| Option | Intrusiveness | Description |
+So there is one mechanism: **`kgraph sync`** — a decoupled post-build step that
+reads build artifacts and refreshes the graph incrementally. "Hiding it in the
+build flow" is achieved by the *pipeline invoking* sync, not by KGraph wrapping
+make.
+
+| Integration | Who calls `kgraph sync` | Coupling with kbuild |
 |---|---|---|
-| **A. `kgraph build` wrapper** (recommended) | Low | `kgraph build -- make CC=clang LLVM=1 -j$(nproc)`: record the pre-build baseline → pass through and execute make → post-trigger P1-P7. The user only needs to replace `make` with `kgraph build -- make` |
-| **B. Explicit `kgraph sync`** | Zero | After building, the user manually runs `kgraph sync`, which compares mtime + git to update incrementally. Simplest, but the user has to remember |
-| **C. git hook (post-commit/post-merge)** | Medium | Triggered after commit/pull. But git events ≠ build events; the files may not have been compiled yet, which conflicts with the "compiler-aligned" philosophy |
+| Shell: `make && kgraph sync` (or an alias) | the developer | none |
+| Makefile post-target (e.g. a `kgraph-sync` target that execs `kgraph sync`) | the kernel build system (user-added target) | none — KGraph is just invoked |
+| CI: build step → `kgraph sync` step | the CI pipeline | none |
+| KBench: build, then `kgraph sync` between commits | KBench | none |
 
-**Recommended A + B combination**:
-- `kgraph build -- <make command>` achieves "hide index updates inside the make pipeline" (the user's requirement)
-- `kgraph sync` as a fallback, triggering an increment manually at any time
+**Dropped: `kgraph build -- make` wrapper.** It coupled KGraph to the kernel
+build mechanics and put KGraph in the build's critical path (if make hangs/crashes,
+the wrapper is implicated), for the marginal benefit of "one command instead of
+two." `make && kgraph sync` achieves the same automation without the coupling,
+and keeps the build and the index as cleanly separated concerns.
 
-**Not recommended: C**: at commit time the files may not have been compiled, violating the "only index compile truth" principle.
+**Latency note:** `make && kgraph sync` runs sync *after* make. To not drag the
+overall flow, sync MUST be incremental and fast (seconds, proportional to the
+changed TUs — see §4 / §8.1). A full rebuild (≈16 min) here would defeat the
+purpose; the whole design hinges on sync being cheap. Async/background sync
+(`make && kgraph sync &`) is a future optimization if even the incremental cost
+matters; for MVP, blocking incremental sync is acceptable.
+
+**Not recommended: git hooks (post-commit/post-merge).** At commit time the files
+may not have been compiled, violating the "only index compile truth" rule. Sync
+presumes a build has happened (it keys off rebuilt `.o`); a git hook can't
+guarantee that.
+
+> "Build-driven" means the build *has happened* (artifacts exist, compile truth
+> established) — **not** that KGraph *runs* the build. The trigger is the
+> pipeline calling `sync` after make; KGraph never owns or wraps the build.
 
 ---
 
