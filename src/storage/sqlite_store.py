@@ -199,6 +199,7 @@ class SQLiteStore(GraphStore):
 
         # Bulk-load tuning + per-phase timing instrumentation.
         self._bulk_mode = False
+        self._incremental_mode = False
         _vmaj_vmin = tuple(int(x) for x in sqlite3.sqlite_version.split(".")[:2])
         self._supports_returning = _vmaj_vmin >= (3, 35)  # INSERT ... RETURNING
         self._stats: dict[str, float] = {
@@ -266,7 +267,7 @@ class SQLiteStore(GraphStore):
 
             # Periodic commit (suppressed during bulk load; finalize commits once)
             self._batch_counter += 1
-            if not self._bulk_mode and self._batch_counter % 10 == 0:
+            if not self._incremental_mode and not self._bulk_mode and self._batch_counter % 10 == 0:
                 self.conn.commit()
                 logger.debug("Committed after %d batches", self._batch_counter)
 
@@ -378,6 +379,13 @@ class SQLiteStore(GraphStore):
                 self.conn.execute(_INSERT_SYMBOL, params)
                 rowid = self._get_symbol_id(sym.scip_symbol)
             self._symbol_id_cache[sym.scip_symbol] = rowid
+            # Restore def location if NULLed (incremental: delete_file_records
+            # NULLed it so the re-ingest upsert can re-establish it).
+            self.conn.execute(
+                "UPDATE symbols SET def_file_id=?, def_start_line=?, def_end_line=? "
+                "WHERE id=? AND def_file_id IS NULL",
+                (file_id, sym.def_start_line, sym.def_end_line, rowid),
+            )
 
     def _write_occurrences(self, occurrences: list[OccurrenceRecord],
                            file_id: int) -> None:
@@ -879,6 +887,82 @@ class SQLiteStore(GraphStore):
             "SELECT type, COUNT(*) FROM edges GROUP BY type"
         ).fetchall()
         return {r[0]: r[1] for r in rows}
+
+    # ── Incremental sync (transactional per-file delete + re-insert) ──
+
+    def begin_incremental(self) -> None:
+        """Enter incremental mode: suppress write_batch auto-commit. The first
+        DML auto-starts a transaction; caller MUST commit/rollback_incremental."""
+        self._incremental_mode = True
+
+    def commit_incremental(self) -> None:
+        """Commit the incremental transaction and exit incremental mode."""
+        self.conn.commit()
+        self._incremental_mode = False
+
+    def rollback_incremental(self) -> None:
+        """Rollback the incremental transaction and exit incremental mode."""
+        self.conn.rollback()
+        self._incremental_mode = False
+
+    def delete_file_records(self, file_path: str) -> tuple[Optional[int], list[int]]:
+        """Delete a file's occurrences + edges (NOT symbols). NULL out def_file_id
+        for symbols formerly defined here so the re-ingest upsert can re-establish
+        them. Returns (file_id, formerly_defined_symbol_ids) for scoped GC/contains."""
+        fid = self._get_file_id(file_path)
+        if fid is None:
+            return (None, [])
+        formerly_defined = [r[0] for r in self.conn.execute(
+            "SELECT id FROM symbols WHERE def_file_id=?", (fid,)).fetchall()]
+        self.conn.execute("DELETE FROM occurrences WHERE file_id=?", (fid,))
+        self.conn.execute("DELETE FROM edges WHERE file_id=?", (fid,))
+        self.conn.execute(
+            "UPDATE symbols SET def_file_id=NULL, def_start_line=-1, def_end_line=-1 "
+            "WHERE def_file_id=?", (fid,))
+        return (fid, formerly_defined)
+
+    def scoped_contains_recovery(self, touched_file_ids: list[int]) -> None:
+        """Scoped version of finalize()'s global contains recovery — only for
+        structs/fields affected by the touched files. Avoids the O(all fields)
+        global pass.
+
+        The contains edge source is the enclosing STRUCT (via
+        enclosing_symbol), the dst is the field. We re-derive contains for
+        fields whose def is in a touched file (those were just re-ingested and
+        their contains edges deleted), by joining field.enclosing_symbol to the
+        struct's scip_symbol.
+        """
+        if not touched_file_ids:
+            return
+        ph = ",".join("?" * len(touched_file_ids))
+        # Delete contains edges whose dst (field) is in a touched file.
+        self.conn.execute(
+            f"DELETE FROM edges WHERE type='contains' "
+            f"AND dst_id IN (SELECT id FROM symbols WHERE def_file_id IN ({ph}))",
+            touched_file_ids,
+        )
+        # Re-derive: for every field in a touched file, join to its enclosing struct.
+        self.conn.execute(
+            f"INSERT OR IGNORE INTO edges (src_id, dst_id, type, file_id, line, weight, confidence) "
+            f"SELECT s.id, f.id, 'contains', f.def_file_id, f.def_start_line, 1, 1.0 "
+            f"FROM symbols f JOIN symbols s ON f.enclosing_symbol = s.scip_symbol "
+            f"WHERE f.enclosing_symbol != '' AND f.kind = 'field' "
+            f"AND f.def_file_id IN ({ph})",
+            touched_file_ids,
+        )
+
+    def scoped_gc_dangling_edges(self, candidate_symbol_ids: list[int]) -> None:
+        """Delete edges pointing at symbols that no longer have a defining
+        occurrence (renamed/deleted). Scoped to candidates from delete_file_records."""
+        if not candidate_symbol_ids:
+            return
+        ph = ",".join("?" * len(candidate_symbol_ids))
+        self.conn.execute(
+            f"DELETE FROM edges WHERE dst_id IN ({ph}) "
+            f"AND NOT EXISTS (SELECT 1 FROM occurrences o "
+            f"WHERE o.symbol_id = edges.dst_id AND (o.role & 1) = 1)",
+            candidate_symbol_ids,
+        )
 
     def close(self) -> None:
         """Close the database connection."""

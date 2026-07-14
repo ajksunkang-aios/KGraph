@@ -99,6 +99,10 @@ case "$CMD" in
     # Local interactive code-graph explorer (HTTP API + browser UI)
     exec "$PYTHON" "$DIR/lib/kgraph/view/server.py" "$@"
     ;;
+  sync)
+    # Incrementally refresh the graph after a build (lazy-indexing)
+    exec "$PYTHON" "$DIR/lib/kgraph/src/cli/sync_cmd.py" "$@"
+    ;;
   ingest|status)
     # Reserved for future index lifecycle commands
     echo "kgraph: '$CMD' is not yet implemented. See https://github.com/ajksunkang-aios/KGraph/issues"
@@ -106,7 +110,7 @@ case "$CMD" in
     ;;
   *)
     echo "kgraph: unknown command '$CMD'"
-    echo "Usage: kgraph {install|detect|uninstall|init|view|serve} [options]"
+    echo "Usage: kgraph {install|detect|uninstall|init|view|serve|sync} [options]"
     exit 1
     ;;
 esac
