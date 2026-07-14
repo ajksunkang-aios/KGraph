@@ -13,3 +13,14 @@ __pycache__/
 /linux
 *.scip
 .kgraph/
+
+# Sibling benchmark repo (dev symlink to ../KBench). KBench is a separate
+# standalone repo; KGraph/eval clones it on demand, never tracks it here.
+/KBench
+
+# Eval artifacts (per-run outputs, not source) — see eval/DESIGN.md
+eval/results/
+eval/reports/
+eval/datasets/
+eval/.venv/
+

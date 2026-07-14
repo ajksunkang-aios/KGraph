@@ -1,0 +1,21 @@
+[project]
+name = "kgraph-eval"
+version = "0.1.0"
+description = "Eval harness for KGraph — consumes an existing kgraph.db, runs the KBench retrieval A/B, renders a report."
+requires-python = ">=3.10"
+dependencies = [
+  # Drives the agent loop through the Anthropic-compatible endpoint
+  # (same path KBench's harness uses; GLM/Claude/etc. via ANTHROPIC_BASE_URL).
+  "anthropic",
+  # KBench's B-arm imports KGraph's mcp/server.py directly, which pulls these in
+  # (mirrors KGraph's own runtime deps + KBench requirements.txt).
+  "protobuf>=7.35.0,<8",
+  "mcp",
+]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["kgraph_eval"]

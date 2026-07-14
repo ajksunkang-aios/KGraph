@@ -1,0 +1,127 @@
+name: Eval (KBench retrieval)
+
+# Runs the KBench retrieval A/B against a freshly-built kgraph.db, on the
+# kernel commit KBench pins (v7.1-rc7). Renders the A/B gain + model-matrix
+# report. Uploaded as an artifact (not committed — per-run results, not source).
+#
+# This workflow OWNS the db build (it is NOT kgraph_eval's job — DESIGN §7):
+#   clone torvalds/linux @ KBench-pin → defconfig build → compile_commands.json
+#   → scip-clang index → kgraph init → kgraph.db
+# Then kgraph_eval only consumes the db: python -m kgraph_eval --kernel linux
+#
+# scip-clang is Linux x86-64 only → runs on ubuntu-latest.
+# Triggered manually for now; once stable, gate on tags / schedule.
+
+on:
+  workflow_dispatch:
+    inputs:
+      models:
+        description: 'Comma-separated model ids (≥2 → model matrix). e.g. glm-5,claude-sonnet'
+        required: false
+        default: 'glm-5'
+
+env:
+  CCACHE_DIR: /home/runner/.ccache
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120   # build ~22min + scip 30-90min + agent A/B
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout KGraph
+        uses: actions/checkout@v4
+
+      - name: Baseline (CPU / disk)
+        run: |
+          echo "nproc: $(nproc)"
+          echo "mem:  $(free -h | awk '/^Mem:/ {print $2}')"
+          df -h /
+
+      - name: Install build toolchain + ccache
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang lld llvm build-essential ccache \
+            bc bison flex libelf-dev libssl-dev libncurses-dev \
+            cpio dwarves
+
+      # KBench's retrieval tasks are pinned to v7.1-rc7 (4549871…). The db MUST
+      # be built from this exact tree, else the GT is non-circular-violating.
+      - name: Clone Linux @ KBench retrieval pin (v7.1-rc7)
+        run: |
+          PIN="4549871118cf616eecdd2d939f78e3b9e1dddc48"
+          git clone --depth 1 https://github.com/torvalds/linux.git linux
+          # The shallow clone is at master tip; fetch + checkout the KBench pin.
+          # (depth 1 won't have the pin SHA → unshallow that one commit.)
+          git -C linux fetch --depth 1 origin "$PIN"
+          git -C linux checkout "$PIN"
+          echo "HEAD: $(git -C linux rev-parse HEAD)"
+          echo "HEAD_SHORT=$(git -C linux rev-parse --short HEAD)" >> "$GITHUB_ENV"
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key:  ccache-eval-${{ env.HEAD_SHORT }}
+          restore-keys: |
+            ccache-linux-
+
+      - name: Configure ccache
+        run: |
+          mkdir -p "$CCACHE_DIR"
+          ccache --set-config=max_size=4G
+          ccache --set-config=compression=true
+          ccache -z
+
+      - name: defconfig + build compile_commands.json
+        run: |
+          cd linux
+          make CC="ccache clang" LLVM=1 defconfig
+          make CC="ccache clang" LLVM=1 -j"$(nproc)" compile_commands.json
+          ls -lh compile_commands.json
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install kgraph runtime deps
+        run: pip install -r requirements.txt
+
+      - name: scip-clang index → index.scip
+        working-directory: linux
+        run: |
+          chmod +x "${{ github.workspace }}/thirdparty/scip-clang"
+          "${{ github.workspace }}/thirdparty/scip-clang" \
+            --compdb-path compile_commands.json
+          ls -lh index.scip
+
+      - name: kgraph init → kgraph.db  (build the system-under-test)
+        run: python3 src/cli/init_cmd.py linux --skip-build
+
+      - name: Install eval deps
+        run: pip install -e ./eval
+
+      - name: Run eval (KBench retrieval A/B)
+        env:
+          ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
+          ANTHROPIC_MODEL: ${{ inputs.models }}
+        run: |
+          python -m kgraph_eval --kernel linux \
+            --models "${{ inputs.models }}" \
+            --arms A-baseline,B-kgraph --reps 3
+
+      - name: Upload eval results + report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-${{ env.HEAD_SHORT }}
+          path: |
+            eval/results/
+            eval/reports/
+          retention-days: 30
+          if-no-files-found: ignore
