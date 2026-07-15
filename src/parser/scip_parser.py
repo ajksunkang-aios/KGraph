@@ -400,8 +400,20 @@ class SCIPParser:
                     type=EdgeType.OPS_BIND,
                     file_path=occ_rec.file_path,
                     line=occ_rec.start_line,
-                    confidence=0.5,  # heuristic, lower confidence
-                    metadata=_json_metadata({"field_name": field_name}),
+                    # The binding itself (ops_table → impl fn @ loc) is a
+                    # compiler-established fact — scip-clang emits the
+                    # occurrence from a compiled TU, so it is ground truth, not
+                    # a guess. Only the field-name/table-name LABELING is
+                    # heuristically inferred below; that uncertainty is tracked
+                    # in metadata (inferred_field) rather than dragging down
+                    # the edge confidence, which otherwise signals to agents
+                    # that a solid binding is questionable and triggers
+                    # redundant grep/read verification.
+                    confidence=1.0,
+                    metadata=_json_metadata({
+                        "field_name": field_name,
+                        "inferred_field": True,
+                    }),
                 ))
 
             # Regular call/reference edge

@@ -31,7 +31,7 @@ from pathlib import Path
 # not work for arbitrary SHAs on GitHub, so we do a shallow clone of the
 # default branch then `checkout` the pin (still cheap).
 KBENCH_URL = "https://github.com/ajksunkang-aios/KBench.git"
-KBENCH_PIN = "ef6a28f462f458006637e0dd0f89f4e0fbaf41b2"  # HEAD as of setup
+KBENCH_PIN = "f89579adcb983a4554649cd4b5ed7974683aad14"  # feat(harness): tool_trace (HEAD after tool-trace commit)
 
 RETRIEVAL_MANIFEST = "tasks/retrieval/manifest.json"
 
