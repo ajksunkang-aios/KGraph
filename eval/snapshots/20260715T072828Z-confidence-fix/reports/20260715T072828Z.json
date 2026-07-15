@@ -1,0 +1,167 @@
+{
+  "run_id": "20260715T072828Z",
+  "summary": {
+    "A-baseline": {
+      "n": 24,
+      "avg_f1": 0.808,
+      "avg_tokens": 4906,
+      "avg_calls": 3.7,
+      "avg_wall": 63.94
+    },
+    "B-kgraph": {
+      "n": 24,
+      "avg_f1": 1.0,
+      "avg_tokens": 4591,
+      "avg_calls": 1.4,
+      "avg_wall": 6.94
+    }
+  },
+  "tiers": {
+    "A-baseline": {
+      "compiler-aware": {
+        "n": 6,
+        "avg_f1": 1.0,
+        "avg_tokens": 7707,
+        "avg_calls": 5.7,
+        "avg_wall": 92.06
+      },
+      "direct": {
+        "n": 18,
+        "avg_f1": 0.744,
+        "avg_tokens": 3972,
+        "avg_calls": 3.0,
+        "avg_wall": 54.57
+      }
+    },
+    "B-kgraph": {
+      "compiler-aware": {
+        "n": 6,
+        "avg_f1": 1.0,
+        "avg_tokens": 5184,
+        "avg_calls": 2.2,
+        "avg_wall": 10.24
+      },
+      "direct": {
+        "n": 18,
+        "avg_f1": 1.0,
+        "avg_tokens": 4394,
+        "avg_calls": 1.2,
+        "avg_wall": 5.84
+      }
+    }
+  },
+  "per_task": {
+    "retrieval/callers/ext4_file_read_iter": {
+      "A-baseline": {
+        "f1": 1.0,
+        "tokens": 18170,
+        "calls": 12,
+        "wall": 189.4
+      },
+      "B-kgraph": {
+        "f1": 1.0,
+        "tokens": 10263,
+        "calls": 3,
+        "wall": 18.96
+      }
+    },
+    "retrieval/callers/vfs_read": {
+      "A-baseline": {
+        "f1": 0.8,
+        "tokens": 7880,
+        "calls": 4,
+        "wall": 78.48
+      },
+      "B-kgraph": {
+        "f1": 1.0,
+        "tokens": 3294,
+        "calls": 1,
+        "wall": 5.13
+      }
+    },
+    "retrieval/code_snippet/ext4_read_iter_assign": {
+      "A-baseline": {
+        "f1": 1.0,
+        "tokens": 4915,
+        "calls": 7,
+        "wall": 92.72
+      },
+      "B-kgraph": {
+        "f1": 1.0,
+        "tokens": 451,
+        "calls": 2,
+        "wall": 7.79
+      }
+    },
+    "retrieval/function_body/ext4_file_read_iter": {
+      "A-baseline": {
+        "f1": 1.0,
+        "tokens": 1444,
+        "calls": 1,
+        "wall": 16.19
+      },
+      "B-kgraph": {
+        "f1": 1.0,
+        "tokens": 6238,
+        "calls": 1,
+        "wall": 8.38
+      }
+    },
+    "retrieval/ops_impls/read_iter": {
+      "A-baseline": {
+        "f1": 1.0,
+        "tokens": 2986,
+        "calls": 3,
+        "wall": 27.88
+      },
+      "B-kgraph": {
+        "f1": 1.0,
+        "tokens": 3409,
+        "calls": 1,
+        "wall": 5.28
+      }
+    },
+    "retrieval/struct_def/file_operations": {
+      "A-baseline": {
+        "f1": 0.0,
+        "tokens": 488,
+        "calls": 1,
+        "wall": 8.23
+      },
+      "B-kgraph": {
+        "f1": 1.0,
+        "tokens": 3112,
+        "calls": 1,
+        "wall": 4.1
+      }
+    },
+    "retrieval/symbol_def/generic_file_read_iter": {
+      "A-baseline": {
+        "f1": 1.0,
+        "tokens": 1445,
+        "calls": 1,
+        "wall": 16.98
+      },
+      "B-kgraph": {
+        "f1": 1.0,
+        "tokens": 3253,
+        "calls": 1,
+        "wall": 3.69
+      }
+    },
+    "retrieval/symbol_def/vfs_read": {
+      "A-baseline": {
+        "f1": 1.0,
+        "tokens": 1803,
+        "calls": 2,
+        "wall": 21.83
+      },
+      "B-kgraph": {
+        "f1": 1.0,
+        "tokens": 6185,
+        "calls": 1,
+        "wall": 3.42
+      }
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "run_id": "20260715T072828Z",
+  "task_id": "retrieval/symbol_def/vfs_read",
+  "vertical": "retrieval",
+  "subtype": "symbol_def",
+  "tier": "direct",
+  "arm": "B-kgraph",
+  "model": "GLM-5.2",
+  "replicate": 3,
+  "accuracy": {
+    "recall": 1.0,
+    "precision": 1.0,
+    "f1": 1.0
+  },
+  "cost": {
+    "tokens_in": 6124,
+    "tokens_out": 61,
+    "tokens_cache": 0,
+    "tool_calls": {
+      "get_symbol": 1
+    },
+    "wall_seconds": 3.42
+  },
+  "turns": 2,
+  "answer": "`vfs_read` is defined in:\n\n```kbench\nvfs_read|fs/read_write.c\n```",
+  "tool_trace": [
+    {
+      "turn": 1,
+      "name": "get_symbol",
+      "input": {
+        "name": "vfs_read",
+        "kind": "function"
+      }
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "run_id": "20260715T072828Z",
+  "task_id": "retrieval/callers/ext4_file_read_iter",
+  "vertical": "retrieval",
+  "subtype": "callers",
+  "tier": "compiler-aware",
+  "arm": "B-kgraph",
+  "model": "GLM-5.2",
+  "replicate": 3,
+  "accuracy": {
+    "recall": 1.0,
+    "precision": 1.0,
+    "f1": 1.0
+  },
+  "cost": {
+    "tokens_in": 9598,
+    "tokens_out": 665,
+    "tokens_cache": 0,
+    "tool_calls": {
+      "get_symbol": 1,
+      "find_ops_impls": 1,
+      "find_references": 1
+    },
+    "wall_seconds": 18.96
+  },
+  "turns": 3,
+  "answer": "The `ext4_file_read_iter` function (defined at `fs/ext4/file.c:130`) is bound as the `.read_iter` implementation of the `ext4_file_operations` ops table. This binding is captured by the `ops_bind` edge, not by grepping the function name.\n\n```kbench\next4_file_operations|fs/ext4/file.c\n```",
+  "tool_trace": [
+    {
+      "turn": 1,
+      "name": "get_symbol",
+      "input": {
+        "name": "ext4_file_read_iter"
+      }
+    },
+    {
+      "turn": 1,
+      "name": "find_ops_impls",
+      "input": {
+        "field_name": "read_iter",
+        "struct_type": "ext4_file_operations"
+      }
+    },
+    {
+      "turn": 2,
+      "name": "find_references",
+      "input": {
+        "name": "ext4_file_read_iter"
+      }
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "run_id": "20260715T072828Z",
+  "task_id": "retrieval/symbol_def/generic_file_read_iter",
+  "vertical": "retrieval",
+  "subtype": "symbol_def",
+  "tier": "direct",
+  "arm": "A-baseline",
+  "model": "GLM-5.2",
+  "replicate": 3,
+  "accuracy": {
+    "recall": 1.0,
+    "precision": 1.0,
+    "f1": 1.0
+  },
+  "cost": {
+    "tokens_in": 1351,
+    "tokens_out": 94,
+    "tokens_cache": 0,
+    "tool_calls": {
+      "grep": 1
+    },
+    "wall_seconds": 16.98
+  },
+  "turns": 2,
+  "answer": "`generic_file_read_iter` is defined in `mm/filemap.c`.\n\n```kbench\ngeneric_file_read_iter|mm/filemap.c\n```",
+  "tool_trace": [
+    {
+      "turn": 1,
+      "name": "grep",
+      "input": {
+        "pattern": "^(ssize_t |static ssize_t )?generic_file_read_iter\\b",
+        "glob": "*.c"
+      }
+    }
+  ]
+}

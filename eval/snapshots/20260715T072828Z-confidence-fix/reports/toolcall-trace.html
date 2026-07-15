@@ -1,0 +1,58 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>KGraph Eval — Tool Call Trace (rep=3, confidence fixed)</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+body{font-family:-apple-system,Arial,sans-serif;margin:0;background:#f6f7f9;color:#1f2328}
+.wrap{max-width:1180px;margin:0 auto;padding:28px 20px 60px}
+h1{font-size:22px;margin:0 0 4px} h2{font-size:17px;margin:28px 0 10px;border-left:3px solid #6366f1;padding-left:10px}
+.meta{color:#57606a;font-size:13px;margin-bottom:4px}
+.note{background:#ecfdf5;border-left:3px solid #1a7f37;padding:10px 14px;font-size:13px;margin:16px 0;border-radius:4px}
+code{background:#f3f4f6;padding:1px 5px;border-radius:3px;font-size:12px}
+.task-block{background:#fff;border-radius:8px;padding:12px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.task-title{font-size:14px;font-weight:600;margin-bottom:8px}
+.pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:600;margin-left:8px}
+.pill-direct{background:#eef6ff;color:#0969da} .pill-comp{background:#fff1e5;color:#bc4c00}
+.arm-row{display:flex;align-items:flex-start;gap:10px;margin:6px 0}
+.arm-label{width:90px;font-size:12px;font-weight:600;padding-top:4px;flex-shrink:0}
+.arm-A{color:#64748b} .arm-B{color:#6366f1}
+.flow{flex:1;display:flex;flex-wrap:wrap;align-items:center;gap:4px;min-height:28px}
+.step{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap}
+.arrow{color:#94a3b8;font-size:12px}
+.empty{color:#94a3b8;font-size:11px;font-style:italic}
+.t-grep{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
+.t-glob{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+.t-read{background:#e0e7ff;color:#3730a3;border:1px solid #a5b4fc}
+.t-get_symbol,.t-get_neighborhood{background:#ddd6fe;color:#5b21b6;border:1px solid #c4b5fd}
+.t-find_ops_impls,.t-find_callers,.t-find_callees,.t-find_references,.t-find_type_definition{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7}
+.t-search_symbols{background:#fce7f3;color:#9d174d;border:1px solid #f9a8d4}
+.t-call_path,.t-get_callchain,.t-get_struct_layout,.t-index_status{background:#e2e8f0;color:#334155;border:1px solid #cbd5e1}
+.step .arg{color:#57606a;font-size:10px}
+.legend{font-size:12px;color:#57606a;margin:10px 0;display:flex;flex-wrap:wrap;gap:10px}
+.legend span{display:inline-flex;align-items:center;gap:4px}
+.legend i{width:11px;height:11px;border-radius:2px;display:inline-block}
+</style></head><body><div class="wrap">
+<h1>KGraph Eval — Tool Call Trace</h1>
+<div class="meta">Model: <code>GLM-5.2</code> · 8 tasks × 2 arms · rep=3 (median rep's trace) · confidence fix verified</div>
+<div class="meta">A-baseline = grep/glob/read · B-kgraph = +13 KGraph MCP tools</div>
+<div class="note"><b>读图：</b>每色块 = 一次工具调用，按 turn 顺序从左到右。<b>A 臂</b>（灰）通常 <code>grep</code> 多轮试错 + <code>read</code> 确认的长链路；<b>B 臂</b>（紫绿）1-2 个语义工具直达，<b>不再 fallback grep</b>（confidence 修复后）。</div>
+<h2>逐任务工具流（按调用顺序，取中位数 rep）</h2>
+<div class="legend" id="legend"></div>
+<div id="traces"></div>
+<h2>工具流构成（各臂调了哪些工具、总几次）</h2>
+<div style="background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.06)"><canvas id="compChart" height="120"></canvas></div>
+</div>
+<script>
+const DATA = {"run_id": "20260715T072828Z", "model": "GLM-5.2", "reps": 3, "per_task": [{"task": "retrieval/callers/ext4_file_read_iter", "tier": "compiler-aware", "subtype": "callers", "A-baseline": {"trace": [{"turn": 1, "name": "grep", "input": {"pattern": "ext4_file_read_iter"}}, {"turn": 2, "name": "grep", "input": {"pattern": "ext4_file_operations", "glob": "fs/ext4/*.c"}}, {"turn": 3, "name": "grep", "input": {"pattern": "ext4_file_operations"}}, {"turn": 4, "name": "glob", "input": {"pattern": "fs/ext4/file.c"}}, {"turn": 5, "name": "read", "input": {"path": "fs/ext4/file.c", "start_line": 1, "end_line": 100}}, {"turn": 6, "name": "read", "input": {"end_line": 880, "path": "fs/ext4/file.c", "start_line": 100}}, {"turn": 7, "name": "read", "input": {"end_line": 1300, "path": "fs/ext4/file.c", "start_line": 880}}], "f1": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok": 10812, "calls": 7, "wall": 158.9}, "B-kgraph": {"trace": [{"turn": 1, "name": "get_symbol", "input": {"name": "ext4_file_read_iter"}}, {"turn": 1, "name": "find_ops_impls", "input": {"field_name": "read_iter", "struct_type": "ext4_file_operations"}}, {"turn": 2, "name": "find_references", "input": {"name": "ext4_file_read_iter"}}], "f1": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok": 6694, "calls": 3, "wall": 12.5}}, {"task": "retrieval/ops_impls/read_iter", "tier": "compiler-aware", "subtype": "ops_impls", "A-baseline": {"trace": [{"turn": 1, "name": "grep", "input": {"pattern": "ext4_file_operations", "glob": "*.c"}}, {"turn": 1, "name": "grep", "input": {"pattern": "ext4_file_operations", "glob": "*.h"}}, {"turn": 2, "name": "read", "input": {"path": "fs/ext4/file.c", "start_line": 974, "end_line": 1000}}], "f1": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok": 2861, "calls": 3, "wall": 20.4}, "B-kgraph": {"trace": [{"turn": 1, "name": "find_ops_impls", "input": {"field_name": "read_iter", "struct_type": "ext4_file_operations"}}], "f1": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok": 3530, "calls": 1, "wall": 6.5}}, {"task": "retrieval/callers/vfs_read", "tier": "direct", "subtype": "callers", "A-baseline": {"trace": [{"turn": 1, "name": "grep", "input": {"pattern": "\\bvfs_read\\s*\\(", "max_matches": 100}}, {"turn": 2, "name": "read", "input": {"path": "fs/exec.c", "start_line": 800, "end_line": 840}}, {"turn": 2, "name": "read", "input": {"path": "fs/read_write.c", "start_line": 700, "end_line": 775}}], "f1": 0.8, "f1_reps": [0.8, 0.8, 0.8], "tok": 4160, "calls": 3, "wall": 68.3}, "B-kgraph": {"trace": [{"turn": 1, "name": "find_callers", "input": {"name": "vfs_read", "depth": 1}}], "f1": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok": 3294, "calls": 1, "wall": 5.2}}, {"task": "retrieval/code_snippet/ext4_read_iter_assign", "tier": "direct", "subtype": "code_snippet", "A-baseline": {"trace": [{"turn": 1, "name": "grep", "input": {"pattern": "\\.read_iter\\s*=", "glob": "fs/ext4/*.c"}}, {"turn": 2, "name": "grep", "input": {"glob": "fs/ext4/*.c", "pattern": "read_iter"}}, {"turn": 3, "name": "grep", "input": {"glob": "fs/ext4/*.c", "pattern": "file_operations"}}, {"turn": 4, "name": "grep", "input": {"pattern": "ext4_file_operations"}}, {"turn": 5, "name": "grep", "input": {"pattern": "file_operations", "glob": "fs/ext4/*"}}, {"turn": 6, "name": "glob", "input": {"pattern": "fs/ext4/*.c"}}, {"turn": 7, "name": "grep", "input": {"pattern": "file_operations", "path": "fs/ext4/file.c"}}, {"turn": 8, "name": "read", "input": {"path": "fs/ext4/file.c", "start_line": 700, "end_line": 850}}, {"turn": 9, "name": "grep", "input": {"path": "fs/ext4/file.c", "pattern": "ext4_file_operations"}}, {"turn": 10, "name": "read", "input": {"end_line": 1000, "path": "fs/ext4/file.c", "start_line": 850}}], "f1": 1.0, "f1_reps": [1.0, 1.0, 0.0], "tok": 15558, "calls": 10, "wall": 150.5}, "B-kgraph": {"trace": [{"turn": 1, "name": "find_ops_impls", "input": {"field_name": "read_iter", "struct_type": "ext4_file_operations"}}, {"turn": 2, "name": "get_symbol", "input": {"name": "ext4_file_read_iter", "kind": "function"}}], "f1": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok": 3441, "calls": 2, "wall": 7.8}}, {"task": "retrieval/function_body/ext4_file_read_iter", "tier": "direct", "subtype": "function_body", "A-baseline": {"trace": [{"turn": 1, "name": "grep", "input": {"pattern": "ext4_file_read_iter", "glob": "*.c"}}], "f1": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok": 1445, "calls": 1, "wall": 18.2}, "B-kgraph": {"trace": [{"turn": 1, "name": "get_symbol", "input": {"name": "ext4_file_read_iter"}}], "f1": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok": 5856, "calls": 1, "wall": 6.1}}, {"task": "retrieval/struct_def/file_operations", "tier": "direct", "subtype": "struct_def", "A-baseline": {"trace": [{"turn": 1, "name": "grep", "input": {"pattern": "struct file_operations \\{", "glob": "*.h", "max_matches": 10}}], "f1": 0.0, "f1_reps": [0.0, 0.0, 0.0], "tok": 1423, "calls": 1, "wall": 8.2}, "B-kgraph": {"trace": [{"turn": 1, "name": "get_symbol", "input": {"name": "file_operations", "kind": "struct"}}], "f1": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok": 3243, "calls": 1, "wall": 4.3}}, {"task": "retrieval/symbol_def/generic_file_read_iter", "tier": "direct", "subtype": "symbol_def", "A-baseline": {"trace": [{"turn": 1, "name": "grep", "input": {"pattern": "generic_file_read_iter", "max_matches": 20}}], "f1": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok": 1445, "calls": 1, "wall": 17.0}, "B-kgraph": {"trace": [{"turn": 1, "name": "get_symbol", "input": {"name": "generic_file_read_iter"}}], "f1": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok": 6185, "calls": 1, "wall": 3.9}}, {"task": "retrieval/symbol_def/vfs_read", "tier": "direct", "subtype": "symbol_def", "A-baseline": {"trace": [{"turn": 1, "name": "grep", "input": {"pattern": "^ssize_t vfs_read\\("}}], "f1": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok": 1430, "calls": 1, "wall": 57.5}, "B-kgraph": {"trace": [{"turn": 1, "name": "get_symbol", "input": {"name": "vfs_read", "kind": "function"}}], "f1": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok": 6185, "calls": 1, "wall": 3.8}}], "arms": ["A-baseline", "B-kgraph"]};
+const ARMS=["A-baseline","B-kgraph"];
+const TC={grep:"t-grep",glob:"t-glob",read:"t-read",get_symbol:"t-get_symbol",get_neighborhood:"t-get_symbol",find_ops_impls:"t-find_ops_impls",find_callers:"t-find_ops_impls",find_callees:"t-find_ops_impls",find_references:"t-find_ops_impls",find_type_definition:"t-find_ops_impls",search_symbols:"t-search_symbols",call_path:"t-call_path",get_callchain:"t-call_path",get_struct_layout:"t-call_path",index_status:"t-call_path"};
+function as2(n,i){const s=JSON.stringify(i);return s.length<38?s:s.slice(0,36)+"…";}
+const allTools=new Set();
+DATA.per_task.forEach(t=>ARMS.forEach(a=>t[a].trace.forEach(s=>allTools.add(s.name))));
+document.getElementById('legend').innerHTML=[...allTools].sort().map(n=>"<span><i class='"+(TC[n]||'t-call_path')+"'></i>"+n+"</span>").join('');
+const tr=document.getElementById('traces');
+DATA.per_task.forEach(t=>{const pc=t.tier==='compiler-aware'?'pill-comp':'pill-direct';let h="<div class='task-block'><div class='task-title'><code>"+t.task+"</code><span class='pill "+pc+"'>"+t.tier+"</span></div>";
+ARMS.forEach(arm=>{const fl=t[arm].trace;const steps=fl.length?fl.map(s=>"<span class='step "+(TC[s.name]||'t-call_path')+"'>"+s.name+"<span class='arg'>"+as2(s.name,s.input)+"</span></span>").join("<span class='arrow'>→</span>"):"<span class='empty'>（无工具调用）</span>";h+="<div class='arm-row'><div class='arm-label "+(arm==='B-kgraph'?'arm-B':'arm-A')+"'>"+arm+"</div><div class='flow'>"+steps+"</div></div>";});
+h+="</div>";tr.insertAdjacentHTML('beforeend',h);});
+const ta=[...allTools].sort();
+const cd=ARMS.map(arm=>({label:arm,data:ta.map(tn=>{let n=0;DATA.per_task.forEach(t=>t[arm].trace.forEach(s=>{if(s.name===tn)n++}));return n;}),backgroundColor:arm==='B-kgraph'?'#6366f1':'#94a3b8'}));
+new Chart(document.getElementById('compChart'),{type:'bar',data:{labels:ta,datasets:cd},options:{responsive:true,plugins:{legend:{position:'top'},title:{display:true,text:'tool invocation count per arm (sum over 8 tasks, median-rep trace)'}},scales:{x:{title:{display:true,text:'tool'}},y:{title:{display:true,text:'# calls'},ticks:{stepSize:1}}}}});
+</script></body></html>

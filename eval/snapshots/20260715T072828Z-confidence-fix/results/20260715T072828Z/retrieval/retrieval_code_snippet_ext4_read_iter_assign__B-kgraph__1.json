@@ -1,0 +1,45 @@
+{
+  "run_id": "20260715T072828Z",
+  "task_id": "retrieval/code_snippet/ext4_read_iter_assign",
+  "vertical": "retrieval",
+  "subtype": "code_snippet",
+  "tier": "direct",
+  "arm": "B-kgraph",
+  "model": "GLM-5.2",
+  "replicate": 1,
+  "accuracy": {
+    "recall": 1.0,
+    "precision": 1.0,
+    "f1": 1.0
+  },
+  "cost": {
+    "tokens_in": 6382,
+    "tokens_out": 152,
+    "tokens_cache": 2944,
+    "tool_calls": {
+      "find_ops_impls": 1,
+      "get_symbol": 1
+    },
+    "wall_seconds": 7.72
+  },
+  "turns": 3,
+  "answer": "The `.read_iter` field of ext4's `file_operations` table is assigned to `ext4_file_read_iter`, defined in `fs/ext4/file.c`.\n\n```kbench\next4_file_read_iter|fs/ext4/file.c\n```",
+  "tool_trace": [
+    {
+      "turn": 1,
+      "name": "find_ops_impls",
+      "input": {
+        "field_name": "read_iter",
+        "struct_type": "ext4_file_operations"
+      }
+    },
+    {
+      "turn": 2,
+      "name": "get_symbol",
+      "input": {
+        "name": "ext4_file_read_iter",
+        "kind": "function"
+      }
+    }
+  ]
+}

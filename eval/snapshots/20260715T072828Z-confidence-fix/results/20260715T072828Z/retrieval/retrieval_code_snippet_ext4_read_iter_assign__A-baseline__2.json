@@ -1,0 +1,110 @@
+{
+  "run_id": "20260715T072828Z",
+  "task_id": "retrieval/code_snippet/ext4_read_iter_assign",
+  "vertical": "retrieval",
+  "subtype": "code_snippet",
+  "tier": "direct",
+  "arm": "A-baseline",
+  "model": "GLM-5.2",
+  "replicate": 2,
+  "accuracy": {
+    "recall": 1.0,
+    "precision": 1.0,
+    "f1": 1.0
+  },
+  "cost": {
+    "tokens_in": 16878,
+    "tokens_out": 347,
+    "tokens_cache": 640,
+    "tool_calls": {
+      "grep": 7,
+      "glob": 1,
+      "read": 2
+    },
+    "wall_seconds": 205.96
+  },
+  "turns": 11,
+  "answer": "The `.read_iter` field in ext4's `ext4_file_operations` table is assigned `ext4_file_read_iter`, defined in `fs/ext4/file.c`.\n\n```kbench\next4_file_read_iter|fs/ext4/file.c\n```",
+  "tool_trace": [
+    {
+      "turn": 1,
+      "name": "grep",
+      "input": {
+        "pattern": "\\.read_iter\\s*=",
+        "glob": "fs/ext4/*.c"
+      }
+    },
+    {
+      "turn": 2,
+      "name": "grep",
+      "input": {
+        "glob": "fs/ext4/*.c",
+        "pattern": "read_iter"
+      }
+    },
+    {
+      "turn": 3,
+      "name": "grep",
+      "input": {
+        "glob": "fs/ext4/*.c",
+        "pattern": "file_operations"
+      }
+    },
+    {
+      "turn": 4,
+      "name": "grep",
+      "input": {
+        "pattern": "ext4_file_operations"
+      }
+    },
+    {
+      "turn": 5,
+      "name": "grep",
+      "input": {
+        "pattern": "file_operations",
+        "glob": "fs/ext4/*"
+      }
+    },
+    {
+      "turn": 6,
+      "name": "glob",
+      "input": {
+        "pattern": "fs/ext4/*.c"
+      }
+    },
+    {
+      "turn": 7,
+      "name": "grep",
+      "input": {
+        "pattern": "file_operations",
+        "path": "fs/ext4/file.c"
+      }
+    },
+    {
+      "turn": 8,
+      "name": "read",
+      "input": {
+        "path": "fs/ext4/file.c",
+        "start_line": 700,
+        "end_line": 850
+      }
+    },
+    {
+      "turn": 9,
+      "name": "grep",
+      "input": {
+        "path": "fs/ext4/file.c",
+        "pattern": "ext4_file_operations"
+      }
+    },
+    {
+      "turn": 10,
+      "name": "read",
+      "input": {
+        "end_line": 1000,
+        "path": "fs/ext4/file.c",
+        "start_line": 850
+      }
+    }
+  ]
+}

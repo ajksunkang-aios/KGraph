@@ -1,0 +1,54 @@
+{
+  "run_id": "20260715T072828Z",
+  "task_id": "retrieval/ops_impls/read_iter",
+  "vertical": "retrieval",
+  "subtype": "ops_impls",
+  "tier": "compiler-aware",
+  "arm": "A-baseline",
+  "model": "GLM-5.2",
+  "replicate": 2,
+  "accuracy": {
+    "recall": 1.0,
+    "precision": 1.0,
+    "f1": 1.0
+  },
+  "cost": {
+    "tokens_in": 1757,
+    "tokens_out": 132,
+    "tokens_cache": 1024,
+    "tool_calls": {
+      "grep": 2,
+      "read": 1
+    },
+    "wall_seconds": 18.34
+  },
+  "turns": 3,
+  "answer": "```kbench\next4_file_read_iter|fs/ext4/file.c\n```",
+  "tool_trace": [
+    {
+      "turn": 1,
+      "name": "grep",
+      "input": {
+        "pattern": "ext4_file_operations",
+        "glob": "*.c"
+      }
+    },
+    {
+      "turn": 1,
+      "name": "grep",
+      "input": {
+        "pattern": "\\.read_iter\\s*=",
+        "glob": "fs/ext4/*.c"
+      }
+    },
+    {
+      "turn": 2,
+      "name": "read",
+      "input": {
+        "path": "fs/ext4/file.c",
+        "start_line": 974,
+        "end_line": 1000
+      }
+    }
+  ]
+}

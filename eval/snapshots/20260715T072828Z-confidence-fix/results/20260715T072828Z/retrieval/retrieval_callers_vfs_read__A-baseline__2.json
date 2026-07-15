@@ -1,0 +1,55 @@
+{
+  "run_id": "20260715T072828Z",
+  "task_id": "retrieval/callers/vfs_read",
+  "vertical": "retrieval",
+  "subtype": "callers",
+  "tier": "direct",
+  "arm": "A-baseline",
+  "model": "GLM-5.2",
+  "replicate": 2,
+  "accuracy": {
+    "recall": 1.0,
+    "precision": 0.6667,
+    "f1": 0.8
+  },
+  "cost": {
+    "tokens_in": 3817,
+    "tokens_out": 335,
+    "tokens_cache": 0,
+    "tool_calls": {
+      "grep": 1,
+      "read": 2
+    },
+    "wall_seconds": 67.36
+  },
+  "turns": 3,
+  "answer": "The three functions that directly call `vfs_read` are:\n\n- `read_code` in `fs/exec.c` (line 825)\n- `ksys_read` in `fs/read_write.c` (line 718)\n- `ksys_pread64` in `fs/read_write.c` (line 766)\n\n```kbench\nread_code|fs/exec.c\nksys_read|fs/read_write.c\nksys_pread64|fs/read_write.c\n```",
+  "tool_trace": [
+    {
+      "turn": 1,
+      "name": "grep",
+      "input": {
+        "pattern": "\\bvfs_read\\s*\\(",
+        "max_matches": 100
+      }
+    },
+    {
+      "turn": 2,
+      "name": "read",
+      "input": {
+        "path": "fs/exec.c",
+        "start_line": 800,
+        "end_line": 840
+      }
+    },
+    {
+      "turn": 2,
+      "name": "read",
+      "input": {
+        "path": "fs/read_write.c",
+        "start_line": 700,
+        "end_line": 775
+      }
+    }
+  ]
+}

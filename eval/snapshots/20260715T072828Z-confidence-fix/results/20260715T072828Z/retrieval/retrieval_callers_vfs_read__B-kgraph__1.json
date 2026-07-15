@@ -1,0 +1,36 @@
+{
+  "run_id": "20260715T072828Z",
+  "task_id": "retrieval/callers/vfs_read",
+  "vertical": "retrieval",
+  "subtype": "callers",
+  "tier": "direct",
+  "arm": "B-kgraph",
+  "model": "GLM-5.2",
+  "replicate": 1,
+  "accuracy": {
+    "recall": 1.0,
+    "precision": 1.0,
+    "f1": 1.0
+  },
+  "cost": {
+    "tokens_in": 6113,
+    "tokens_out": 105,
+    "tokens_cache": 0,
+    "tool_calls": {
+      "find_callers": 1
+    },
+    "wall_seconds": 5.25
+  },
+  "turns": 2,
+  "answer": "Two functions directly call `vfs_read`:\n\n```kbench\nksys_read|fs/read_write.c\nksys_pread64|fs/read_write.c\n```",
+  "tool_trace": [
+    {
+      "turn": 1,
+      "name": "find_callers",
+      "input": {
+        "name": "vfs_read",
+        "depth": 1
+      }
+    }
+  ]
+}

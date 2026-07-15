@@ -1,0 +1,51 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>KGraph Eval — A/B (rep=3, confidence fixed)</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+body{font-family:-apple-system,Arial,sans-serif;margin:0;background:#f6f7f9;color:#1f2328}
+.wrap{max-width:1100px;margin:0 auto;padding:28px 20px 60px}
+h1{font-size:22px;margin:0 0 4px} h2{font-size:17px;margin:28px 0 10px;border-left:3px solid #6366f1;padding-left:10px}
+.meta{color:#57606a;font-size:13px;margin-bottom:4px}
+.note{background:#fff8e1;border-left:3px solid #f0b400;padding:10px 14px;font-size:13px;margin:16px 0;border-radius:4px}
+.note-fix{background:#ecfdf5;border-left-color:#1a7f37}
+code{background:#f3f4f6;padding:1px 5px;border-radius:3px;font-size:12px}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:14px 0}
+.kpi{background:#fff;border-radius:8px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.kpi .label{font-size:12px;color:#57606a;text-transform:uppercase;letter-spacing:.5px}
+.kpi .row{display:flex;justify-content:space-between;align-items:baseline;margin-top:6px}
+.kpi .arm{font-size:11px;color:#57606a} .kpi .val{font-size:20px;font-weight:600}
+.kpi .delta{font-size:12px;font-weight:600} .pos{color:#1a7f37} .neg{color:#cf222e} .neu{color:#57606a}
+.chart-card{background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:16px}
+</style></head><body><div class="wrap">
+<h1>KGraph Eval — KBench Retrieval A/B</h1>
+<div class="meta">Model: <code>GLM-5.2</code> · 8 tasks × 2 arms × 3 reps · median (KBench §12) · run <code>20260715T072828Z</code> (confidence fix verified)</div>
+<div class="meta">A-baseline = grep/glob/read · B-kgraph = +13 KGraph MCP tools</div>
+<div class="note note-fix"><b>confidence 修复后 (rep=3):</b> ops_bind 边 confidence 0.5→1.0 (绑定是编译期实锤)。修复前 B tokens=4496, 修复后 B tokens=3485 (<b>-22%</b>); B calls 持平 1.0; B 彻底不再 fallback grep。A wall 33→43s 是 baseline 单点波动非修复影响。</div>
+<h2>总览（中位数，8 任务聚合）</h2><div class="kpi-grid" id="kpis"></div>
+<h2>按 tier 对比</h2><div class="chart-card"><canvas id="tierChart" height="120"></canvas></div>
+<h2>逐任务对比（F1 中位数）</h2><div class="chart-card"><canvas id="f1Chart" height="100"></canvas></div>
+<h2>逐任务对比（wall-clock 秒，中位数，越低越好）</h2><div class="chart-card"><canvas id="wallChart" height="100"></canvas></div>
+<h2>rep=3 准确率抖动（每个点一次 replicate 的 F1）</h2><div class="chart-card"><canvas id="jitterChart" height="120"></canvas></div>
+</div>
+<script>
+const DATA = {"run_id": "20260715T072828Z", "model": "GLM-5.2", "reps": 3, "overview": {"A-baseline": {"f1": 1.0, "tok": 2375, "calls": 2.0, "wall": 42.7}, "B-kgraph": {"f1": 1.0, "tok": 3485, "calls": 1.0, "wall": 6.1}}, "tiers": {"A-baseline": {"direct": {"f1": 1.0, "tok": 1493, "calls": 1.5, "wall": 41.0}, "compiler-aware": {"f1": 1.0, "tok": 6255, "calls": 5.0, "wall": 82.7}}, "B-kgraph": {"direct": {"f1": 1.0, "tok": 3367, "calls": 1.0, "wall": 5.2}, "compiler-aware": {"f1": 1.0, "tok": 4929, "calls": 2.5, "wall": 9.1}}}, "per_task": [{"task": "retrieval/callers/ext4_file_read_iter", "tier": "compiler-aware", "subtype": "callers", "A-baseline": {"f1_med": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok_med": 10812, "calls_med": 7, "wall_med": 158.9}, "B-kgraph": {"f1_med": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok_med": 6694, "calls_med": 3, "wall_med": 12.5}}, {"task": "retrieval/ops_impls/read_iter", "tier": "compiler-aware", "subtype": "ops_impls", "A-baseline": {"f1_med": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok_med": 2861, "calls_med": 3, "wall_med": 20.4}, "B-kgraph": {"f1_med": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok_med": 3530, "calls_med": 1, "wall_med": 6.5}}, {"task": "retrieval/callers/vfs_read", "tier": "direct", "subtype": "callers", "A-baseline": {"f1_med": 0.8, "f1_reps": [0.8, 0.8, 0.8], "tok_med": 4160, "calls_med": 3, "wall_med": 68.3}, "B-kgraph": {"f1_med": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok_med": 3294, "calls_med": 1, "wall_med": 5.2}}, {"task": "retrieval/code_snippet/ext4_read_iter_assign", "tier": "direct", "subtype": "code_snippet", "A-baseline": {"f1_med": 1.0, "f1_reps": [1.0, 1.0, 0.0], "tok_med": 15558, "calls_med": 10, "wall_med": 150.5}, "B-kgraph": {"f1_med": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok_med": 3441, "calls_med": 2, "wall_med": 7.8}}, {"task": "retrieval/function_body/ext4_file_read_iter", "tier": "direct", "subtype": "function_body", "A-baseline": {"f1_med": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok_med": 1445, "calls_med": 1, "wall_med": 18.2}, "B-kgraph": {"f1_med": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok_med": 5856, "calls_med": 1, "wall_med": 6.1}}, {"task": "retrieval/struct_def/file_operations", "tier": "direct", "subtype": "struct_def", "A-baseline": {"f1_med": 0.0, "f1_reps": [0.0, 0.0, 0.0], "tok_med": 1423, "calls_med": 1, "wall_med": 8.2}, "B-kgraph": {"f1_med": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok_med": 3243, "calls_med": 1, "wall_med": 4.3}}, {"task": "retrieval/symbol_def/generic_file_read_iter", "tier": "direct", "subtype": "symbol_def", "A-baseline": {"f1_med": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok_med": 1445, "calls_med": 1, "wall_med": 17.0}, "B-kgraph": {"f1_med": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok_med": 6185, "calls_med": 1, "wall_med": 3.9}}, {"task": "retrieval/symbol_def/vfs_read", "tier": "direct", "subtype": "symbol_def", "A-baseline": {"f1_med": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok_med": 1430, "calls_med": 1, "wall_med": 57.5}, "B-kgraph": {"f1_med": 1.0, "f1_reps": [1.0, 1.0, 1.0], "tok_med": 6185, "calls_med": 1, "wall_med": 3.8}}], "arms": ["A-baseline", "B-kgraph"]};
+const ARMS=["A-baseline","B-kgraph"];const COLORS={"A-baseline":"#94a3b8","B-kgraph":"#6366f1"};
+Chart.defaults.font.size=12;
+function fmtDelta(b,a,lo){if(a===0)return['neu','—'];var pct=(b-a)/a*100;var good=lo?pct<0:pct>0;var cls=Math.abs(pct)<1?'neu':(good?'pos':'neg');return[cls,(pct>0?'+':'')+pct.toFixed(0)+'%'];}
+const kpiDefs=[['f1','F1 (accuracy)',false],['wall','Wall time (s)',true],['calls','Tool calls',true],['tok','Tokens',true]];
+let kpis='';
+kpiDefs.forEach(d=>{const a=DATA.overview['A-baseline'][d[0]],b=DATA.overview['B-kgraph'][d[0]];const r=fmtDelta(b,a,d[2]);kpis+="<div class='kpi'><div class='label'>"+d[1]+"</div><div class='row'><span class='arm'>A-baseline</span><span class='val'>"+a+"</span></div><div class='row'><span class='arm'>B-kgraph</span><span class='val' style='color:#6366f1'>"+b+"</span></div><div class='row'><span class='arm'>Δ B vs A</span><span class='delta "+r[0]+"'>"+r[1]+"</span></div></div>";});
+document.getElementById('kpis').innerHTML=kpis;
+const tD=DATA.tiers;
+new Chart(document.getElementById('tierChart'),{type:'bar',data:{labels:['F1','Tokens','Calls','Wall(s)'],datasets:[
+{label:'A · direct',data:[tD['A-baseline'].direct.f1,tD['A-baseline'].direct.tok,tD['A-baseline'].direct.calls,tD['A-baseline'].direct.wall],backgroundColor:'#cbd5e1'},
+{label:'B · direct',data:[tD['B-kgraph'].direct.f1,tD['B-kgraph'].direct.tok,tD['B-kgraph'].direct.calls,tD['B-kgraph'].direct.wall],backgroundColor:'#a5b4fc'},
+{label:'A · compiler-aware',data:[tD['A-baseline']['compiler-aware'].f1,tD['A-baseline']['compiler-aware'].tok,tD['A-baseline']['compiler-aware'].calls,tD['A-baseline']['compiler-aware'].wall],backgroundColor:'#94a3b8'},
+{label:'B · compiler-aware',data:[tD['B-kgraph']['compiler-aware'].f1,tD['B-kgraph']['compiler-aware'].tok,tD['B-kgraph']['compiler-aware'].calls,tD['B-kgraph']['compiler-aware'].wall],backgroundColor:'#6366f1'}]},options:{responsive:true,plugins:{legend:{position:'top'}}}});
+const st=t=>t.replace('retrieval/','');
+new Chart(document.getElementById('f1Chart'),{type:'bar',indexAxis:'y',data:{labels:DATA.per_task.map(t=>st(t.task)),datasets:ARMS.map(a=>({label:a,data:DATA.per_task.map(t=>t[a].f1_med),backgroundColor:COLORS[a]}))},options:{plugins:{legend:{position:'top'}},scales:{x:{min:0,max:1.05}}}});
+new Chart(document.getElementById('wallChart'),{type:'bar',indexAxis:'y',data:{labels:DATA.per_task.map(t=>st(t.task)),datasets:ARMS.map(a=>({label:a,data:DATA.per_task.map(t=>t[a].wall_med),backgroundColor:COLORS[a]}))},options:{plugins:{legend:{position:'top'}}}});
+const jd=[];DATA.per_task.forEach((t,i)=>ARMS.forEach(a=>t[a].f1_reps.forEach((v,j)=>jd.push({x:i,y:v,arm:a}))));
+new Chart(document.getElementById('jitterChart'),{type:'scatter',data:{datasets:[
+{label:'A-baseline (reps)',data:jd.filter(d=>d.arm==='A-baseline'),backgroundColor:'#94a3b8',pointStyle:'rect',pointRadius:6},
+{label:'B-kgraph (reps)',data:jd.filter(d=>d.arm==='B-kgraph'),backgroundColor:'#6366f1',pointStyle:'circle',pointRadius:7}]},options:{plugins:{legend:{position:'top'}},scales:{x:{title:{display:true,text:'task (index)'}},y:{min:0,max:1.05,title:{display:true,text:'F1 per replicate'}}}}});
+</script></body></html>

@@ -1,0 +1,46 @@
+{
+  "run_id": "20260715T072828Z",
+  "task_id": "retrieval/symbol_def/vfs_read",
+  "vertical": "retrieval",
+  "subtype": "symbol_def",
+  "tier": "direct",
+  "arm": "A-baseline",
+  "model": "GLM-5.2",
+  "replicate": 3,
+  "accuracy": {
+    "recall": 1.0,
+    "precision": 1.0,
+    "f1": 1.0
+  },
+  "cost": {
+    "tokens_in": 1693,
+    "tokens_out": 110,
+    "tokens_cache": 640,
+    "tool_calls": {
+      "grep": 2
+    },
+    "wall_seconds": 21.83
+  },
+  "turns": 3,
+  "answer": "The function `vfs_read` is defined in `fs/read_write.c`.\n\n```kbench\nvfs_read|fs/read_write.c\n```",
+  "tool_trace": [
+    {
+      "turn": 1,
+      "name": "grep",
+      "input": {
+        "pattern": "^vfs_read\\b",
+        "glob": "*.c",
+        "max_matches": 10
+      }
+    },
+    {
+      "turn": 2,
+      "name": "grep",
+      "input": {
+        "pattern": "vfs_read\\(",
+        "glob": "*.c",
+        "max_matches": 20
+      }
+    }
+  ]
+}
