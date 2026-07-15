@@ -111,11 +111,29 @@ class TestParserOutput:
         assert any("ext4_file_read_iter" in t for t in targets)
 
     def test_ops_bind_confidence(self):
-        """ops_bind edges should have confidence=0.5 (heuristic)."""
+        """ops_bind edges carry confidence=1.0 — the binding is compiler-established.
+
+        scip-clang emits the occurrence from a compiled TU, so the ops_table→impl
+        relation is ground truth, not a heuristic guess. confidence=1.0 signals this
+        to agents (a lower value makes them distrust find_ops_impls and fall back to
+        grep+read verification). The only heuristic part — the field-name inference —
+        is tracked in metadata.inferred_field, not dragged into edge confidence.
+        """
+        import json
         doc = _first_doc_batch(self.batches)
         ops_edges = [e for e in doc.edges if e.type == EdgeType.OPS_BIND]
+        assert ops_edges, "expected at least one ops_bind edge"
         for edge in ops_edges:
-            assert edge.confidence == 0.5
+            assert edge.confidence == 1.0, (
+                f"ops_bind confidence should be 1.0 (compiler-established), "
+                f"got {edge.confidence}"
+            )
+            # the field-name inference uncertainty is recorded separately, not in confidence
+            meta = json.loads(edge.metadata) if edge.metadata else {}
+            assert meta.get("inferred_field") is True, (
+                "ops_bind metadata should mark inferred_field=True "
+                "(the field-name label is the heuristic part)"
+            )
 
     def test_ops_bind_has_metadata(self):
         """ops_bind edges should carry field_name in metadata JSON."""
