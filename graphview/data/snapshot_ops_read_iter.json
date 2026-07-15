@@ -7,7 +7,7 @@
     "file_path": "block/fops.c",
     "line": 930,
     "field_name": "blkdev_read_iter",
-    "confidence": 0.5
+    "confidence": 1.0
   },
   {
     "ops_name": "null_fops",
@@ -17,7 +17,7 @@
     "file_path": "drivers/char/mem.c",
     "line": 650,
     "field_name": "read_iter_null",
-    "confidence": 0.5
+    "confidence": 1.0
   },
   {
     "ops_name": "zero_fops",
@@ -27,7 +27,7 @@
     "file_path": "drivers/char/mem.c",
     "line": 668,
     "field_name": "read_iter_zero",
-    "confidence": 0.5
+    "confidence": 1.0
   },
   {
     "ops_name": "full_fops",
@@ -37,7 +37,7 @@
     "file_path": "drivers/char/mem.c",
     "line": 682,
     "field_name": "read_iter_zero",
-    "confidence": 0.5
+    "confidence": 1.0
   },
   {
     "ops_name": "random_fops",
@@ -47,7 +47,7 @@
     "file_path": "drivers/char/random.c",
     "line": 1555,
     "field_name": "random_read_iter",
-    "confidence": 0.5
+    "confidence": 1.0
   },
   {
     "ops_name": "urandom_fops",
@@ -57,7 +57,7 @@
     "file_path": "drivers/char/random.c",
     "line": 1567,
     "field_name": "urandom_read_iter",
-    "confidence": 0.5
+    "confidence": 1.0
   },
   {
     "ops_name": "v9fs_file_operations",
@@ -67,7 +67,7 @@
     "file_path": "fs/9p/vfs_file.c",
     "line": 510,
     "field_name": "v9fs_file_read_iter",
-    "confidence": 0.5
+    "confidence": 1.0
   },
   {
     "ops_name": "ext4_file_operations",
@@ -77,7 +77,7 @@
     "file_path": "fs/ext4/file.c",
     "line": 975,
     "field_name": "ext4_file_read_iter",
-    "confidence": 0.5
+    "confidence": 1.0
   },
   {
     "ops_name": "hugetlbfs_file_operations",
@@ -87,7 +87,7 @@
     "file_path": "fs/hugetlbfs/inode.c",
     "line": 1208,
     "field_name": "hugetlbfs_read_iter",
-    "confidence": 0.5
+    "confidence": 1.0
   },
   {
     "ops_name": "kernfs_file_fops",
@@ -97,7 +97,7 @@
     "file_path": "fs/kernfs/file.c",
     "line": 1008,
     "field_name": "kernfs_fop_read_iter",
-    "confidence": 0.5
+    "confidence": 1.0
   },
   {
     "ops_name": "proc_iter_file_ops",
@@ -107,7 +107,7 @@
     "file_path": "fs/proc/inode.c",
     "line": 567,
     "field_name": "proc_reg_read_iter",
-    "confidence": 0.5
+    "confidence": 1.0
   },
   {
     "ops_name": "signalfd_fops",
@@ -117,7 +117,7 @@
     "file_path": "fs/signalfd.c",
     "line": 246,
     "field_name": "signalfd_read_iter",
-    "confidence": 0.5
+    "confidence": 1.0
   },
   {
     "ops_name": "timerfd_fops",
@@ -127,7 +127,7 @@
     "file_path": "fs/timerfd.c",
     "line": 417,
     "field_name": "timerfd_read_iter",
-    "confidence": 0.5
+    "confidence": 1.0
   },
   {
     "ops_name": "tracing_fops",
@@ -137,7 +137,7 @@
     "file_path": "kernel/trace/trace.c",
     "line": 3782,
     "field_name": "seq_read_iter",
-    "confidence": 0.5
+    "confidence": 1.0
   },
   {
     "ops_name": "shmem_file_operations",
@@ -147,7 +147,7 @@
     "file_path": "mm/shmem.c",
     "line": 5143,
     "field_name": "shmem_file_read_iter",
-    "confidence": 0.5
+    "confidence": 1.0
   },
   {
     "ops_name": "socket_file_ops",
@@ -157,6 +157,6 @@
     "file_path": "net/socket.c",
     "line": 158,
     "field_name": "sock_read_iter",
-    "confidence": 0.5
+    "confidence": 1.0
   }
 ]
