@@ -15,6 +15,7 @@ import json
 import logging
 import sqlite3
 import time
+from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
@@ -52,6 +53,12 @@ CREATE TABLE IF NOT EXISTS symbols(
   subsystem       TEXT,
   enclosing_symbol TEXT
 );
+
+-- Exact source-file symbol navigation: WHERE def_file_id = ? with stable
+-- source-order pagination.  Kept separate from the FTS index because this is
+-- a definition-location query, not a text search.
+CREATE INDEX IF NOT EXISTS idx_symbols_def_file_line_name
+  ON symbols(def_file_id, def_start_line, name, scip_symbol);
 
 -- Source files
 CREATE TABLE IF NOT EXISTS files(
@@ -167,6 +174,44 @@ END;
 """
 
 
+# Keep the fragment API deliberately small and explicit.  These values are
+# persisted by the parser and safe to expose as a query filter; arbitrary
+# strings must never be interpolated into a SQL IN clause.
+_NEIGHBORHOOD_EDGE_TYPES = frozenset({
+    EdgeType.CALLS,
+    EdgeType.REFERENCES,
+    EdgeType.DEFINES,
+    EdgeType.CONTAINS,
+    EdgeType.INCLUDES,
+    EdgeType.OPS_BIND,
+    EdgeType.TYPE_OF,
+    EdgeType.MACRO_EXPANDS,
+    EdgeType.IMPLEMENTS,
+})
+_DEFAULT_NEIGHBORHOOD_EDGE_TYPES = (
+    EdgeType.CALLS,
+    EdgeType.REFERENCES,
+    EdgeType.OPS_BIND,
+    EdgeType.IMPLEMENTS,
+    EdgeType.TYPE_OF,
+    EdgeType.CONTAINS,
+)
+
+_FILE_SYMBOLS_INDEX_SQL = """
+CREATE INDEX IF NOT EXISTS idx_symbols_def_file_line_name
+  ON symbols(def_file_id, def_start_line, name, scip_symbol)
+"""
+_MAX_FILE_SYMBOLS_OFFSET = 1_000_000
+
+
+def _bounded_int(value: int, default: int, minimum: int, maximum: int) -> int:
+    """Clamp public graph-fragment limits to predictable, safe bounds."""
+    try:
+        return max(minimum, min(int(value), maximum))
+    except (TypeError, ValueError):
+        return default
+
+
 class SQLiteStore(GraphStore):
     """
     SQLite-backed implementation of GraphStore.
@@ -192,6 +237,13 @@ class SQLiteStore(GraphStore):
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.row_factory = sqlite3.Row
 
+        # Indexes in _SCHEMA_SQL cover newly created databases.  View also
+        # opens long-lived pre-existing indexes, so install this one lazily at
+        # startup when the symbols table already exists.  CREATE INDEX IF NOT
+        # EXISTS makes the migration idempotent and keeps versioned schema
+        # bookkeeping unnecessary for this additive optimization.
+        self._ensure_file_symbols_index()
+
         # Ingestion caches: scip_symbol → rowid
         self._symbol_id_cache: dict[str, int] = {}
         self._file_id_cache: dict[str, int] = {}
@@ -206,6 +258,30 @@ class SQLiteStore(GraphStore):
             "symbol_write_s": 0.0, "occ_write_s": 0.0, "edge_write_s": 0.0,
             "symbols": 0, "occurrences": 0, "edges": 0, "batches": 0,
         }
+
+    def _ensure_file_symbols_index(self) -> None:
+        """Install the source-file browsing index on existing databases."""
+        has_symbols_table = self.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'symbols'"
+        ).fetchone()
+        if has_symbols_table is None:
+            return
+        try:
+            self.conn.execute(_FILE_SYMBOLS_INDEX_SQL)
+            self.conn.commit()
+        except sqlite3.OperationalError as exc:
+            # A viewer can intentionally point at a read-only DB, or another
+            # process can temporarily hold the schema write lock.  The query
+            # remains correct without this additive index, so do not turn an
+            # optional optimization into a View startup failure.
+            try:
+                self.conn.rollback()
+            except sqlite3.Error:  # pragma: no cover - defensive cleanup
+                pass
+            logger.warning(
+                "Could not install file-symbols index; falling back to scan: %s",
+                exc,
+            )
 
     # ── Schema creation ──
 
@@ -559,60 +635,477 @@ class SQLiteStore(GraphStore):
 
     def get_neighborhood(self, scip_symbol: str, depth: int = 1,
                          edge_types: Optional[list[str]] = None,
-                         summary: bool = False) -> dict:
-        """Get N-hop neighborhood around a symbol."""
+                         summary: bool = False,
+                         max_nodes: int = 160,
+                         max_edges: int = 360) -> dict:
+        """Return a bounded, evidence-preserving N-hop graph fragment.
+
+        The previous implementation returned only nodes.  Consumers then had to
+        fabricate a center-star graph, which lost directed relationships and
+        collapsed parallel ``calls`` / ``ops_bind`` edges.  This breadth-first
+        traversal keeps the actual edge rows and bounds each response before it
+        can turn a high-degree kernel symbol into a browser-sized full graph.
+        """
+        max_depth = _bounded_int(depth, 1, 1, 3)
+        max_nodes = _bounded_int(max_nodes, 160, 1, 500)
+        max_edges = _bounded_int(max_edges, 360, 0, 1_000)
+        requested_types = edge_types or list(_DEFAULT_NEIGHBORHOOD_EDGE_TYPES)
+        types = [edge_type for edge_type in requested_types
+                 if edge_type in _NEIGHBORHOOD_EDGE_TYPES]
+
+        empty = {
+            "center_symbol": scip_symbol,
+            "center": {},
+            "nodes": [],
+            "edges": [],
+            "truncated": False,
+            "truncation": {"nodes": False, "edges": False},
+            "limits": {"max_depth": max_depth, "max_nodes": max_nodes,
+                       "max_edges": max_edges},
+        }
         sym_id = self._get_symbol_id(scip_symbol)
         if sym_id is None:
-            return {"center_symbol": scip_symbol, "nodes": [], "edges": []}
+            return empty
 
-        types = edge_types or ["calls", "references", "ops_bind", "implements", "type_of", "contains"]
-        types_str = ",".join(f"'{t}'" for t in types)
-
-        # Collect all nodes and edges in N-hop range using recursive CTE
-        sql = f"""
-            WITH RECURSIVE neighbors(depth, node_id, edge_src, edge_dst,
-                                     edge_type, edge_file_id, edge_line) AS (
-                -- Initial: edges from/to center symbol
-                SELECT 1, CASE WHEN e.src_id=? THEN e.dst_id ELSE e.src_id END,
-                       e.src_id, e.dst_id, e.type, e.file_id, e.line
-                FROM edges e
-                WHERE (e.src_id=? OR e.dst_id=?) AND e.type IN ({types_str})
-
-                UNION ALL
-                -- Expand: edges from/to discovered nodes
-                SELECT n.depth + 1,
-                       CASE WHEN e.src_id=n.node_id THEN e.dst_id ELSE e.src_id END,
-                       e.src_id, e.dst_id, e.type, e.file_id, e.line
-                FROM edges e
-                JOIN neighbors n ON (e.src_id=n.node_id OR e.dst_id=n.node_id)
-                WHERE n.depth < ? AND e.type IN ({types_str})
-            )
-            SELECT DISTINCT s.scip_symbol, s.name, s.kind,
-                   f.path as def_file_path, s.def_start_line
-            FROM symbols s
-            JOIN (SELECT DISTINCT node_id FROM neighbors) n ON s.id = n.node_id
-            LEFT JOIN files f ON s.def_file_id = f.id
-        """
-        node_rows = self.conn.execute(sql, (sym_id, sym_id, sym_id, depth)).fetchall()
-
-        if summary:
-            nodes = [{"name": r["name"], "kind": r["kind"],
-                      "file": r["def_file_path"], "line": r["def_start_line"]}
-                     for r in node_rows]
-        else:
-            nodes = [dict(r) for r in node_rows]
-
-        # Also include center node
         center_row = self.conn.execute(
-            "SELECT s.scip_symbol, s.name, s.kind, f.path, s.def_start_line "
-            "FROM symbols s LEFT JOIN files f ON s.def_file_id=f.id WHERE s.id=?",
+            """
+            SELECT s.id, s.scip_symbol, s.name, s.kind,
+                   f.path AS def_file_path, s.def_start_line
+            FROM symbols s
+            LEFT JOIN files f ON s.def_file_id = f.id
+            WHERE s.id = ?
+            """,
             (sym_id,),
         ).fetchone()
+        if center_row is None:  # defensive: _get_symbol_id already found it
+            return empty
+
+        center = dict(center_row)
+        center.pop("id", None)
+        node_by_id = {sym_id: center}
+        frontier = {sym_id}
+        edge_by_id: dict[int, dict] = {}
+        nodes_truncated = False
+        edges_truncated = False
+
+        if types and max_edges:
+            type_marks = ", ".join("?" for _ in types)
+            for _hop in range(max_depth):
+                if not frontier or len(edge_by_id) >= max_edges:
+                    if frontier and len(edge_by_id) >= max_edges:
+                        edges_truncated = True
+                    break
+
+                frontier_ids = sorted(frontier)
+                frontier_marks = ", ".join("?" for _ in frontier_ids)
+                # Ask for one extra row so the response can say when it had to
+                # stop.  The edge joins also provide complete node display data,
+                # avoiding a second unbounded node query.
+                remaining = max_edges - len(edge_by_id)
+                sql = f"""
+                    SELECT e.rowid AS edge_id, e.src_id, e.dst_id,
+                           e.type, e.weight, e.confidence, e.metadata,
+                           f.path AS file_path, e.line,
+                           src.scip_symbol AS src_symbol, src.name AS src_name,
+                           src.kind AS src_kind, src_f.path AS src_def_file_path,
+                           src.def_start_line AS src_def_start_line,
+                           dst.scip_symbol AS dst_symbol, dst.name AS dst_name,
+                           dst.kind AS dst_kind, dst_f.path AS dst_def_file_path,
+                           dst.def_start_line AS dst_def_start_line
+                    FROM edges e
+                    JOIN symbols src ON src.id = e.src_id
+                    JOIN symbols dst ON dst.id = e.dst_id
+                    LEFT JOIN files f ON f.id = e.file_id
+                    LEFT JOIN files src_f ON src_f.id = src.def_file_id
+                    LEFT JOIN files dst_f ON dst_f.id = dst.def_file_id
+                    WHERE (e.src_id IN ({frontier_marks})
+                           OR e.dst_id IN ({frontier_marks}))
+                      AND e.type IN ({type_marks})
+                    ORDER BY CASE e.type
+                        WHEN 'calls' THEN 0
+                        WHEN 'ops_bind' THEN 1
+                        ELSE 2
+                    END, e.rowid
+                    LIMIT ?
+                """
+                params = [*frontier_ids, *frontier_ids, *types, remaining + 1]
+                rows = self.conn.execute(sql, params).fetchall()
+                if len(rows) > remaining:
+                    edges_truncated = True
+
+                next_frontier: set[int] = set()
+                for row in rows:
+                    edge_id = row["edge_id"]
+                    if edge_id in edge_by_id:
+                        continue
+                    if len(edge_by_id) >= max_edges:
+                        edges_truncated = True
+                        break
+
+                    endpoint_rows = (
+                        (row["src_id"], row["src_symbol"], row["src_name"],
+                         row["src_kind"], row["src_def_file_path"],
+                         row["src_def_start_line"]),
+                        (row["dst_id"], row["dst_symbol"], row["dst_name"],
+                         row["dst_kind"], row["dst_def_file_path"],
+                         row["dst_def_start_line"]),
+                    )
+                    edge_has_hidden_node = False
+                    for node_id, symbol, name, kind, file_path, start_line in endpoint_rows:
+                        if node_id in node_by_id:
+                            continue
+                        if len(node_by_id) >= max_nodes:
+                            nodes_truncated = True
+                            edge_has_hidden_node = True
+                            break
+                        node_by_id[node_id] = {
+                            "scip_symbol": symbol,
+                            "name": name,
+                            "kind": kind,
+                            "def_file_path": file_path,
+                            "def_start_line": start_line,
+                        }
+                        next_frontier.add(node_id)
+
+                    if edge_has_hidden_node:
+                        continue
+
+                    metadata = {}
+                    if row["metadata"]:
+                        try:
+                            metadata = json.loads(row["metadata"])
+                        except (TypeError, json.JSONDecodeError):
+                            metadata = {"raw": row["metadata"]}
+                    evidence = None
+                    if row["file_path"] and row["line"] is not None and row["line"] >= 0:
+                        evidence = {"file_path": row["file_path"], "line": row["line"]}
+                    edge_by_id[edge_id] = {
+                        "id": f"edge:{edge_id}",
+                        "source": row["src_symbol"],
+                        "target": row["dst_symbol"],
+                        "type": row["type"],
+                        "weight": row["weight"],
+                        "confidence": row["confidence"],
+                        "evidence": evidence,
+                        "metadata": metadata,
+                    }
+
+                frontier = next_frontier
+
+        nodes = [node for node_id, node in node_by_id.items() if node_id != sym_id]
+        if summary:
+            nodes = [
+                {"scip_symbol": node["scip_symbol"], "name": node["name"],
+                 "kind": node["kind"], "file": node["def_file_path"],
+                 "line": node["def_start_line"]}
+                for node in nodes
+            ]
 
         return {
             "center_symbol": scip_symbol,
-            "center": dict(center_row) if center_row else {},
+            "center": center,
             "nodes": nodes,
+            "edges": list(edge_by_id.values()),
+            "truncated": nodes_truncated or edges_truncated,
+            "truncation": {"nodes": nodes_truncated, "edges": edges_truncated},
+            "limits": {"max_depth": max_depth, "max_nodes": max_nodes,
+                       "max_edges": max_edges},
+        }
+
+    @staticmethod
+    def _network_group_path(path: Optional[str], prefix: Optional[str]) -> str:
+        """Map one source path to the current directory-map granularity."""
+        if path is None:
+            return "@external"
+        if not path:
+            return "@outside" if prefix else "@root"
+        if not prefix:
+            return path.split("/", 1)[0] or "@root"
+
+        scoped_prefix = f"{prefix}/"
+        if not path.startswith(scoped_prefix):
+            return "@outside"
+        child = path[len(scoped_prefix):].split("/", 1)[0]
+        return f"{prefix}/{child}" if child else prefix
+
+    @staticmethod
+    def _network_group_label(group: str) -> str:
+        if group == "@outside":
+            return "outside scope"
+        if group == "@external":
+            return "external"
+        if group == "@root":
+            return "repository root"
+        return group.rsplit("/", 1)[-1]
+
+    def get_global_network(self, prefix: Optional[str] = None,
+                           edge_types: Optional[list[str]] = None,
+                           include_internal: bool = False,
+                           max_nodes: int = 100,
+                           max_edges: int = 320) -> dict:
+        """Build a bounded global code map from real file-level relationships.
+
+        A kernel-scale database has far too many symbol nodes for a browser
+        graph.  This query first aggregates the edge table by defining file
+        pair in SQLite, then rolls those compact rows up to the first directory
+        below ``prefix`` in Python.  The work is proportional to the distinct
+        file pairs (tens of thousands in a Linux index), rather than the full
+        symbol graph, and the JSON result remains capped.
+        """
+        clean_prefix = (prefix or "").strip().strip("/") or None
+        max_nodes = _bounded_int(max_nodes, 100, 2, 160)
+        max_edges = _bounded_int(max_edges, 320, 1, 420)
+        requested_types = edge_types or [EdgeType.CALLS, EdgeType.OPS_BIND]
+        types = [edge_type for edge_type in requested_types
+                 if edge_type in _NEIGHBORHOOD_EDGE_TYPES]
+
+        empty = {
+            "scope": {
+                "prefix": clean_prefix,
+                "label": "Linux" if not clean_prefix else f"Linux / {clean_prefix}",
+                "parent": "/".join(clean_prefix.split("/")[:-1]) if clean_prefix else None,
+            },
+            "nodes": [],
+            "edges": [],
+            "totals": {"files": 0, "symbols": 0, "relationships": 0},
+            "truncated": False,
+            "truncation": {"nodes": False, "edges": False},
+            "limits": {"max_nodes": max_nodes, "max_edges": max_edges},
+            "edge_types": types,
+        }
+        if not types:
+            return empty
+
+        file_rows = self.conn.execute(
+            """
+            SELECT f.path, COUNT(s.id) AS symbols
+            FROM files f
+            LEFT JOIN symbols s ON s.def_file_id = f.id AND s.is_external = 0
+            WHERE f.path <> ''
+            GROUP BY f.id, f.path
+            """
+        ).fetchall()
+
+        groups: dict[str, dict[str, int]] = defaultdict(lambda: {
+            "files": 0,
+            "symbols": 0,
+            "incoming": 0,
+            "outgoing": 0,
+            "internal": 0,
+        })
+        drillable: set[str] = set()
+        file_groups: set[str] = set()
+        for row in file_rows:
+            path = row["path"]
+            group = self._network_group_path(path, clean_prefix)
+            groups[group]["files"] += 1
+            groups[group]["symbols"] += int(row["symbols"] or 0)
+            # At a directory's immediate-child granularity, a source file is
+            # represented by its own exact path while a directory represents
+            # one or more descendants.  The UI needs this distinction to use
+            # the correct drill-down action (file symbol list vs. sub-map).
+            if group == path:
+                file_groups.add(group)
+            if not group.startswith("@") and path.startswith(f"{group}/"):
+                drillable.add(group)
+
+        type_marks = ", ".join("?" for _ in types)
+        # A global source map represents definitions in the indexed tree.
+        # SCIP external placeholders use an empty defining-file path; retaining
+        # them produces an isolated "repository root" node with no navigable
+        # source directory.  Keep external symbols available to the symbol
+        # explorer, but omit them from this directory-level map.
+        where_parts = [
+            f"e.type IN ({type_marks})",
+            "src.is_external = 0",
+            "dst.is_external = 0",
+            "src_f.path <> ''",
+            "dst_f.path <> ''",
+        ]
+        params: list[object] = [*types]
+        if clean_prefix:
+            path_like = f"{clean_prefix}/%"
+            where_parts.append(
+                "(src_f.path = ? OR src_f.path LIKE ? OR dst_f.path = ? OR dst_f.path LIKE ?)"
+            )
+            params.extend([clean_prefix, path_like, clean_prefix, path_like])
+
+        rows = self.conn.execute(
+            f"""
+            SELECT src_f.path AS src_path, dst_f.path AS dst_path, e.type,
+                   COUNT(*) AS relationships,
+                   SUM(COALESCE(e.weight, 1)) AS weight
+            FROM edges e
+            JOIN symbols src ON src.id = e.src_id
+            JOIN files src_f ON src_f.id = src.def_file_id
+            JOIN symbols dst ON dst.id = e.dst_id
+            JOIN files dst_f ON dst_f.id = dst.def_file_id
+            WHERE {' AND '.join(where_parts)}
+            GROUP BY src_f.path, dst_f.path, e.type
+            """,
+            params,
+        ).fetchall()
+
+        edge_by_key: dict[tuple[str, str, str], dict] = {}
+        total_relationships = 0
+        for row in rows:
+            source = self._network_group_path(row["src_path"], clean_prefix)
+            target = self._network_group_path(row["dst_path"], clean_prefix)
+            relationships = int(row["relationships"] or 0)
+            weight = int(row["weight"] or relationships)
+            total_relationships += relationships
+            groups[source]  # ensure nodes found only through relationships are retained
+            groups[target]
+            if source == target:
+                groups[source]["internal"] += relationships
+                if not include_internal:
+                    continue
+            groups[source]["outgoing"] += relationships
+            groups[target]["incoming"] += relationships
+            key = (source, target, row["type"])
+            aggregate = edge_by_key.setdefault(key, {
+                "id": f"global:{source}>{target}:{row['type']}",
+                "source": source,
+                "target": target,
+                "type": row["type"],
+                "relationships": 0,
+                "weight": 0,
+            })
+            aggregate["relationships"] += relationships
+            aggregate["weight"] += weight
+
+        ranked_groups = sorted(
+            groups,
+            key=lambda group: (
+                groups[group]["incoming"] + groups[group]["outgoing"],
+                groups[group]["symbols"],
+                groups[group]["files"],
+                group,
+            ),
+            reverse=True,
+        )
+        nodes_truncated = len(ranked_groups) > max_nodes
+        selected_groups = set(ranked_groups[:max_nodes])
+        if clean_prefix and "@outside" in groups and "@outside" not in selected_groups:
+            selected_groups.discard(ranked_groups[-1])
+            selected_groups.add("@outside")
+
+        nodes = []
+        for group in ranked_groups:
+            if group not in selected_groups:
+                continue
+            stats = groups[group]
+            nodes.append({
+                "id": group,
+                "label": self._network_group_label(group),
+                "path": None if group.startswith("@") else group,
+                "files": stats["files"],
+                "symbols": stats["symbols"],
+                "incoming": stats["incoming"],
+                "outgoing": stats["outgoing"],
+                "internal": stats["internal"],
+                "relationships": stats["incoming"] + stats["outgoing"],
+                "can_drill": group in drillable,
+                "is_file": group in file_groups,
+            })
+
+        ranked_edges = sorted(
+            (edge for edge in edge_by_key.values()
+             if edge["source"] in selected_groups and edge["target"] in selected_groups),
+            key=lambda edge: (
+                edge["relationships"], edge["weight"], edge["type"], edge["id"],
+            ),
+            reverse=True,
+        )
+        edges_truncated = len(ranked_edges) > max_edges
+        edges = ranked_edges[:max_edges]
+        scope_groups = [
+            group for group in groups if group not in {"@outside", "@external"}
+        ]
+
+        return {
+            "scope": {
+                "prefix": clean_prefix,
+                "label": "Linux" if not clean_prefix else f"Linux / {clean_prefix}",
+                "parent": "/".join(clean_prefix.split("/")[:-1]) if clean_prefix else None,
+            },
+            "nodes": nodes,
+            "edges": edges,
+            "totals": {
+                "files": sum(groups[group]["files"] for group in scope_groups),
+                "symbols": sum(groups[group]["symbols"] for group in scope_groups),
+                "relationships": total_relationships,
+            },
+            "truncated": nodes_truncated or edges_truncated,
+            "truncation": {"nodes": nodes_truncated, "edges": edges_truncated},
+            "limits": {"max_nodes": max_nodes, "max_edges": max_edges},
+            "edge_types": types,
+        }
+
+    def get_file_symbols(self, path: str, limit: int = 500,
+                         offset: int = 0) -> Optional[dict]:
+        """Return bounded indexed definitions for one exact source file.
+
+        Definitions are read from ``symbols.def_file_id`` rather than inferred
+        from occurrences, so the response is stable even when a symbol has
+        many references in the same file.  This is the compact bridge from a
+        directory graph leaf to a cscope-style symbol navigator.
+        """
+        max_symbols = _bounded_int(limit, 500, 1, 1000)
+        start_offset = _bounded_int(offset, 0, 0, _MAX_FILE_SYMBOLS_OFFSET)
+        file_row = self.conn.execute(
+            """
+            SELECT id, path, language, subsystem, sha
+            FROM files
+            WHERE path = ?
+            """,
+            (path,),
+        ).fetchone()
+        if file_row is None:
+            return None
+
+        # SCIP emits one synthetic module symbol per document (for example
+        # ``<file>/fs/read_write.c``).  It is useful for index bookkeeping but
+        # is not a source definition a developer can navigate to, so omit it
+        # from both the file-page total and the visible rows.
+        total = self.conn.execute(
+            "SELECT COUNT(*) FROM symbols WHERE def_file_id = ? AND kind <> ?",
+            (file_row["id"], SymbolKind.MODULE),
+        ).fetchone()[0]
+        rows = self.conn.execute(
+            """
+            SELECT s.scip_symbol, s.name, s.kind, s.signature,
+                   s.def_start_line, s.def_end_line, s.is_external
+            FROM symbols s
+            WHERE s.def_file_id = ? AND s.kind <> ?
+            ORDER BY
+                s.def_start_line, s.name, s.scip_symbol
+            LIMIT ? OFFSET ?
+            """,
+            (file_row["id"], SymbolKind.MODULE, max_symbols, start_offset),
+        ).fetchall()
+        symbols = []
+        for row in rows:
+            symbol = dict(row)
+            symbol["is_external"] = bool(symbol["is_external"])
+            symbols.append(symbol)
+        return {
+            "file": {
+                "path": file_row["path"],
+                "language": file_row["language"],
+                "subsystem": file_row["subsystem"],
+                "sha": file_row["sha"],
+            },
+            "symbols": symbols,
+            "totals": {"symbols": total},
+            "offset": start_offset,
+            "truncated": total > start_offset + len(rows),
+            "next_offset": (
+                start_offset + len(rows)
+                if total > start_offset + len(rows)
+                else None
+            ),
+            "limits": {"max_symbols": max_symbols},
         }
 
     def call_path(self, src_symbol: str, dst_symbol: str,

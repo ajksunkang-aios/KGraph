@@ -39,6 +39,7 @@ for _sub in ("src", "scripts"):
         sys.path.insert(0, _p)
 
 from storage import SQLiteStore  # noqa: E402
+from parser.models import EdgeType  # noqa: E402
 
 # Source reader (mcp/ dir collides with the MCP SDK pkg name → load by file path)
 _sr_path = _PROJECT / "mcp" / "source_reader.py"
@@ -48,6 +49,32 @@ _sr_spec.loader.exec_module(_sr)
 read_source_with_lineno = _sr.read_source_with_lineno
 
 GRAPHVIEW_DIR = _PROJECT / "graphview"
+
+# A live kernel graph can contain hundreds of thousands of symbols.  The View
+# API is intentionally a fragment service, not a whole-graph download endpoint.
+_MAX_FRAGMENT_DEPTH = 2
+_MAX_FRAGMENT_NODES = 160
+_MAX_FRAGMENT_EDGES = 360
+_MAX_GLOBAL_NODES = 100
+_MAX_GLOBAL_EDGES = 320
+_MAX_FILE_SYMBOLS = 1000
+_MAX_FILE_SYMBOL_OFFSET = 1_000_000
+# ``HTTPServer`` is deliberately single-threaded because its SQLite connection
+# belongs to that serving thread.  Bound the time spent waiting for an accepted
+# client to finish its request headers, otherwise a cancelled browser navigation
+# can keep every later page/API request queued indefinitely.
+_HTTP_CLIENT_TIMEOUT_SECONDS = 5
+_VIEW_EDGE_TYPES = frozenset({
+    EdgeType.CALLS,
+    EdgeType.REFERENCES,
+    EdgeType.DEFINES,
+    EdgeType.CONTAINS,
+    EdgeType.INCLUDES,
+    EdgeType.OPS_BIND,
+    EdgeType.TYPE_OF,
+    EdgeType.MACRO_EXPANDS,
+    EdgeType.IMPLEMENTS,
+})
 
 # ── Lazy store singleton ──
 _store: SQLiteStore | None = None
@@ -82,6 +109,57 @@ def _resolve_one(store: SQLiteStore, name: str, kind: str | None = None) -> str 
     return cands[0]["scip_symbol"]
 
 
+def _resolve_requested_symbol(store: SQLiteStore, query: dict[str, str | None]) -> str | None:
+    """Prefer a SCIP id from the UI; retain name lookup for legacy callers."""
+    scip = query.get("scip")
+    if scip:
+        row = store.conn.execute(
+            "SELECT 1 FROM symbols WHERE scip_symbol = ?", (scip,)
+        ).fetchone()
+        return scip if row else None
+    name = query.get("name")
+    if not name:
+        return None
+    return _resolve_one(store, name, query.get("kind"))
+
+
+def _network_prefix(value: str | None) -> str | None:
+    """Normalise a relative source-tree path used to scope the global map."""
+    if not value:
+        return None
+    prefix = value.strip().strip("/")
+    if not prefix:
+        return None
+    if any(part in ("", ".", "..") for part in prefix.split("/")):
+        return None
+    return prefix
+
+
+def _source_file_path(value: str | None) -> str | None:
+    """Validate one exact, source-tree-relative file path for the View API."""
+    if not value:
+        return None
+    path = value.strip()
+    if not path or path.startswith("/") or path.endswith("/") or "\\" in path:
+        return None
+    if any(part in ("", ".", "..") for part in path.split("/")):
+        return None
+    return path
+
+
+def _file_symbol_offset(value: str | None) -> int | None:
+    """Parse a bounded, non-negative page offset without silently rewinding."""
+    if value is None:
+        return 0
+    try:
+        offset = int(value)
+    except (TypeError, ValueError):
+        return None
+    if not 0 <= offset <= _MAX_FILE_SYMBOL_OFFSET:
+        return None
+    return offset
+
+
 # ── HTTP handler ──
 
 class _MIME:
@@ -100,6 +178,11 @@ _MIME_TYPES = _MIME().types
 
 
 class Handler(BaseHTTPRequestHandler):
+
+    # ``StreamRequestHandler.setup`` applies this to the accepted socket.
+    # BaseHTTPRequestHandler then closes a slow/incomplete request on timeout,
+    # allowing the single serving loop to accept the next local request.
+    timeout = _HTTP_CLIENT_TIMEOUT_SECONDS
 
     def log_message(self, fmt, *args):  # quieter logging
         sys.stderr.write(f"[view] {self.address_string()} {fmt % args}\n")
@@ -128,6 +211,10 @@ class Handler(BaseHTTPRequestHandler):
             return int(v)
         except (TypeError, ValueError):
             return default
+
+    @classmethod
+    def _bounded_int(cls, v, default, minimum, maximum):
+        return max(minimum, min(cls._int(v, default), maximum))
 
     # ── routing ──
     def do_GET(self):
@@ -173,7 +260,20 @@ class Handler(BaseHTTPRequestHandler):
 
         if seg == "status":
             self._send_json({"metadata": store.get_metadata(),
-                             "edge_counts": store.get_edge_counts()})
+                             "edge_counts": store.get_edge_counts(),
+                             "fragment_limits": {
+                                 "max_depth": _MAX_FRAGMENT_DEPTH,
+                                 "max_nodes": _MAX_FRAGMENT_NODES,
+                                 "max_edges": _MAX_FRAGMENT_EDGES,
+                             },
+                             "global_network_limits": {
+                                 "max_nodes": _MAX_GLOBAL_NODES,
+                                 "max_edges": _MAX_GLOBAL_EDGES,
+                             },
+                             "file_symbol_limits": {
+                                 "max_symbols": _MAX_FILE_SYMBOLS,
+                                 "max_offset": _MAX_FILE_SYMBOL_OFFSET,
+                             }})
             return
 
         if seg == "search":
@@ -192,23 +292,96 @@ class Handler(BaseHTTPRequestHandler):
             scip = _resolve_one(store, name, q.get("kind"))
             return self._send_json({"scip_symbol": scip, "candidates": cands})
 
-        # endpoints below need a resolved symbol
-        name = q.get("name")
-        if seg in ("neighborhood", "callers", "callees", "struct", "body", "callchain"):
-            if not name:
-                return self._send_err("missing ?name=")
-            scip = _resolve_one(store, name, q.get("kind"))
-            if scip is None:
-                return self._send_err(f"No symbol named '{name}'", status=404)
-
-        if seg == "neighborhood":
+        if seg == "global-network":
+            raw_prefix = q.get("prefix")
+            prefix = _network_prefix(raw_prefix)
+            if raw_prefix and prefix is None:
+                return self._send_err("invalid ?prefix= (expected a relative source-tree path)")
             et = q.get("edge_types")
             etypes = [t.strip() for t in et.split(",")] if et else None
-            nb = store.get_neighborhood(scip, depth=self._int(q.get("depth"), 1),
-                                         edge_types=etypes, summary=False)
-            # normalize: center uses 'path', alias to def_file_path
-            if nb.get("center"):
-                nb["center"]["def_file_path"] = nb["center"].get("path")
+            unknown = [edge_type for edge_type in (etypes or [])
+                       if edge_type not in _VIEW_EDGE_TYPES]
+            if unknown:
+                return self._send_err(
+                    f"unknown edge type(s): {', '.join(sorted(set(unknown)))}"
+                )
+            include_internal = str(q.get("include_internal") or "").lower() in {
+                "1", "true", "yes", "on",
+            }
+            network = store.get_global_network(
+                prefix=prefix,
+                edge_types=etypes,
+                include_internal=include_internal,
+                max_nodes=self._bounded_int(
+                    q.get("max_nodes"), _MAX_GLOBAL_NODES, 2, _MAX_GLOBAL_NODES,
+                ),
+                max_edges=self._bounded_int(
+                    q.get("max_edges"), _MAX_GLOBAL_EDGES, 1, _MAX_GLOBAL_EDGES,
+                ),
+            )
+            return self._send_json(network)
+
+        if seg == "file-symbols":
+            raw_path = q.get("path")
+            if not raw_path:
+                return self._send_err("missing ?path=")
+            file_path = _source_file_path(raw_path)
+            if file_path is None:
+                return self._send_err(
+                    "invalid ?path= (expected an exact relative source-file path)"
+                )
+            # ``limit`` is the public parameter.  Accept max_symbols as a
+            # friendly alias for clients that mirror the response field.
+            requested_limit = q.get("limit") or q.get("max_symbols")
+            offset = _file_symbol_offset(q.get("offset"))
+            if offset is None:
+                return self._send_err(
+                    f"invalid ?offset= (expected an integer from 0 to {_MAX_FILE_SYMBOL_OFFSET})"
+                )
+            result = store.get_file_symbols(
+                file_path,
+                limit=self._bounded_int(
+                    requested_limit, 500, 1, _MAX_FILE_SYMBOLS,
+                ),
+                offset=offset,
+            )
+            if result is None:
+                return self._send_err(f"No indexed file '{file_path}'", status=404)
+            return self._send_json(result)
+
+        # Endpoints below address a single symbol.  The visual explorer always
+        # supplies a SCIP id so duplicate static helpers cannot be re-resolved
+        # by their short name.  Name lookup remains for older links and scripts.
+        name = q.get("name")
+        if seg in ("neighborhood", "fragment", "callers", "callees", "struct", "body", "callchain"):
+            if not q.get("scip") and not name:
+                return self._send_err("missing ?scip= (or legacy ?name=)")
+            scip = _resolve_requested_symbol(store, q)
+            if scip is None:
+                label = q.get("scip") or name
+                return self._send_err(f"No indexed symbol '{label}'", status=404)
+
+        if seg in ("neighborhood", "fragment"):
+            et = q.get("edge_types")
+            etypes = [t.strip() for t in et.split(",")] if et else None
+            unknown = [edge_type for edge_type in (etypes or [])
+                       if edge_type not in _VIEW_EDGE_TYPES]
+            if unknown:
+                return self._send_err(
+                    f"unknown edge type(s): {', '.join(sorted(set(unknown)))}"
+                )
+            nb = store.get_neighborhood(
+                scip,
+                depth=self._bounded_int(q.get("depth"), 1, 1, _MAX_FRAGMENT_DEPTH),
+                edge_types=etypes,
+                summary=False,
+                max_nodes=self._bounded_int(
+                    q.get("max_nodes"), _MAX_FRAGMENT_NODES, 1, _MAX_FRAGMENT_NODES,
+                ),
+                max_edges=self._bounded_int(
+                    q.get("max_edges"), _MAX_FRAGMENT_EDGES, 0, _MAX_FRAGMENT_EDGES,
+                ),
+            )
             return self._send_json(nb)
 
         if seg == "callers":
@@ -232,14 +405,15 @@ class Handler(BaseHTTPRequestHandler):
             loc = store.get_definition_location(scip)
             if not loc or not loc.get("def_file_path") \
                or (loc.get("def_start_line", -1) < 0):
-                return self._send_json({"name": name, "body": None,
+                return self._send_json({"name": name or scip, "body": None,
                                         "note": "no on-disk definition (external)"})
             body = read_source_with_lineno(
                 _ROOT_PATH, loc["def_file_path"],
                 loc["def_start_line"],
                 loc.get("def_end_line", loc["def_start_line"]),
             )
-            return self._send_json({"name": name, "kind": loc.get("kind"),
+            return self._send_json({"name": name or loc.get("name") or scip,
+                                    "kind": loc.get("kind"),
                                     "file": loc["def_file_path"],
                                     "start_line": loc["def_start_line"],
                                     "body": body})

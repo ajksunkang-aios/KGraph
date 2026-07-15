@@ -309,17 +309,35 @@ The last 7 runs render as a dependency-free static 7-day list (buildable ✓/✗
 symbol/edge counts, timing), published to GitHub Pages by [`deploy-graphview.yml`](.github/workflows/deploy-graphview.yml).
 
 **Interactive explorer** (`kgraph view`) — a local read-only HTTP server (stdlib, zero new deps)
-that serves the code graph over your own `kgraph.db`: search → center a symbol → explore its
-callers/callees/neighborhood, resolve an **ops table** (`read_iter` → every implementation), or
-trace a **call chain** up to a syscall root. Same-origin (server serves both page and API → no CORS).
+that starts with a Linux-wide dependency map over your own `kgraph.db`. The overview aggregates real
+compiler-indexed relationships by directory, so a 479K-symbol kernel index stays interactive without
+sending its raw symbol graph to the browser. Select or double-click a directory to drill into immediate
+children. Direct source-file leaves open their compiler-indexed definitions (functions, structs,
+fields, macros, and global variables) with source lines; selecting a definition enters its exact SCIP
+symbol graph. Then explore a bounded 1–2-hop graph fragment with real directed multi-edges,
+relationship type, confidence, and source evidence. Filter relationship types, switch layouts,
+resolve an **ops table** (`read_iter` → every implementation), or trace a **call chain** up to a
+syscall root. Same-origin (server serves both page and API → no CORS).
 
 ```bash
 kgraph view                       # or: python view/server.py --db <kgraph.db> --root <linux>
 # → http://localhost:8000/graph.html   (health: http://localhost:8000/)
 ```
 
-The explorer's three views: **Neighborhood** (Cytoscape.js graph), **Ops table**, **Call chain**.
-(A read-only Pages demo of pre-baked subgraphs is a planned follow-up; the local explorer is live.)
+The explorer has five views: **Linux map** (directory-level network with file leaves), **Indexed
+symbols** (paged compiler-indexed definitions for one file), **Graph fragment** (Cytoscape.js),
+**Ops bindings**, and **Call chain**. It intentionally caps graph and file-list responses rather than
+sending a full kernel graph to the browser. The current C/C++ index records global variables, not every
+automatic local variable.
+
+For a 30-second Chinese/English-captioned macOS product demo using a real indexed Linux tree:
+
+```bash
+scripts/record-graph-demo.sh ~/Movies/kgraph-demo
+```
+
+The helper opens `graph.html?demo=video`, records no microphone audio, and writes the 30-second
+capture directly as a QuickTime MOV. macOS Screen Recording permission is required.
 
 ---
 

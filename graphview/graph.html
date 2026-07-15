@@ -6,130 +6,342 @@
   <title>KGraph Explorer</title>
   <style>
     :root {
-      --ok: #1a7f37; --bad: #cf222e; --muted: #6e7781;
-      --bg: #f6f8fa; --card: #fff; --line: #d0d7de; --head: #1f2328;
-      --accent: #0969da;
+      --ink: #101827;
+      --ink-soft: #172236;
+      --canvas: #111b2d;
+      --canvas-grid: rgba(148, 163, 184, .11);
+      --paper: #f7f9fc;
+      --panel: #ffffff;
+      --line: #dbe3ef;
+      --text: #182235;
+      --muted: #64748b;
+      --accent: #2563eb;
+      --cyan: #06b6d4;
+      --green: #10b981;
+      --violet: #8b5cf6;
+      --orange: #f59e0b;
+      --rose: #f43f5e;
+      --shadow: 0 14px 38px rgba(15, 23, 42, .10);
     }
     * { box-sizing: border-box; }
-    body { margin: 0; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI",
-        Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--head); }
-    .wrap { max-width: 1200px; margin: 0 auto; padding: 18px 20px 60px; }
-    .nav { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
-    .nav a { color: var(--accent); text-decoration: none; }
-    .nav a.cur { color: var(--head); font-weight: 600; }
-    h1 { font-size: 20px; margin: 0 0 4px; }
-    .sub { color: var(--muted); margin: 0 0 16px; }
-    .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
-    input[type=text], select { font: inherit; padding: 6px 9px; border: 1px solid var(--line);
-      border-radius: 6px; background: var(--card); }
-    input[type=text] { min-width: 260px; }
-    button { font: inherit; padding: 6px 12px; border: 1px solid var(--line);
-      border-radius: 6px; background: var(--card); cursor: pointer; }
-    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .grid { display: grid; grid-template-columns: 1fr 320px; gap: 14px; }
-    .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
-            padding: 12px; }
-    #cy { width: 100%; height: 560px; background: #fff; border-radius: 6px; }
-    .side h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase;
-               letter-spacing: .04em; color: var(--muted); }
-    .side ul { list-style: none; padding: 0; margin: 0 0 12px; max-height: 150px;
-               overflow: auto; }
-    .side li { padding: 2px 0; cursor: pointer; }
-    .side li:hover { color: var(--accent); }
-    .tag { font-size: 11px; color: var(--muted); }
-    .pill { display: inline-block; padding: 0 6px; border-radius: 10px; font-size: 11px;
-            background: #ebeef1; }
-    .pill.ops { color: var(--bad); background: #ffebe9; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--line);
-             white-space: nowrap; }
-    th { color: var(--muted); font-weight: 600; }
-    td.r { font-variant-numeric: tabular-nums; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--text);
+      font: 14px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    .shell { max-width: 1500px; margin: 0 auto; padding: 16px 20px 44px; }
+    .topbar { display: flex; align-items: center; gap: 12px; min-height: 32px; }
+    .crumb { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+    .crumb a { color: var(--muted); text-decoration: none; }
+    .crumb a:hover { color: var(--accent); }
+    .crumb strong { color: var(--text); font-weight: 650; }
+    .db-tag { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .hero { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin: 14px 0 16px; }
+    h1 { margin: 0; font-size: clamp(24px, 3vw, 34px); letter-spacing: -.035em; line-height: 1.08; }
+    .hero p { max-width: 670px; margin: 8px 0 0; color: var(--muted); }
+    .search-row { position: relative; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+    .search-row input, .query-controls input, .query-controls select, .filter-select {
+      min-height: 38px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel);
+      color: var(--text); padding: 8px 10px; outline: none;
+    }
+    .search-row input { width: min(460px, 100%); }
+    input:focus, select:focus, button:focus-visible { outline: 3px solid rgba(37, 99, 235, .24); outline-offset: 1px; }
+    .btn { min-height: 38px; border: 1px solid var(--line); border-radius: 9px; padding: 8px 12px; background: var(--panel); color: var(--text); }
+    .btn:hover { border-color: #9aa9bd; background: #f8fafc; }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    .btn-primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
+    .search-results {
+      position: absolute; z-index: 10; top: calc(100% + 5px); width: min(640px, 100%);
+      max-height: 280px; overflow: auto; display: none; padding: 6px;
+      border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow);
+    }
+    .search-results.open { display: block; }
+    .search-result { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; width: 100%; border: 0; border-radius: 7px; padding: 9px; text-align: left; background: transparent; }
+    .search-result:hover { background: #eff6ff; }
+    .search-result strong { display: block; color: var(--text); }
+    .search-result span { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .kind-pill, .edge-pill, .status-pill { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 7px; font-size: 11px; font-weight: 650; }
+    .kind-pill { background: #e0edff; color: #1d4ed8; }
+    .status-pill { background: #eafaf4; color: #047857; }
+    .workspace { display: grid; grid-template-columns: 220px minmax(0, 1fr) 330px; gap: 14px; align-items: start; }
+    .panel { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); box-shadow: 0 2px 9px rgba(15, 23, 42, .035); }
+    .controls, .details { padding: 14px; }
+    .controls { position: sticky; top: 12px; }
+    .panel h2, .panel h3 { margin: 0; }
+    .panel h2 { font-size: 13px; letter-spacing: .02em; text-transform: uppercase; color: var(--muted); }
+    .panel h3 { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+    .control-group { display: grid; gap: 7px; padding: 14px 0; border-bottom: 1px solid #edf1f7; }
+    .control-group:last-child { border-bottom: 0; padding-bottom: 0; }
+    .control-label { color: var(--muted); font-size: 12px; font-weight: 650; }
+    .filter-select { width: 100%; }
+    fieldset { margin: 0; padding: 0; border: 0; display: grid; gap: 8px; }
+    .edge-filter { display: flex; gap: 8px; align-items: center; color: var(--text); font-size: 13px; }
+    .edge-filter input { accent-color: var(--accent); }
+    .legend { display: grid; gap: 7px; color: var(--muted); font-size: 12px; }
+    .legend-item { display: flex; align-items: center; gap: 7px; }
+    .legend-line { width: 23px; height: 0; border-top: 2px solid var(--accent); }
+    .legend-line.ops { border-top-color: var(--orange); border-top-style: dashed; }
+    .legend-line.reference { border-top-color: var(--violet); border-top-style: dotted; }
+    .canvas-panel { overflow: hidden; min-width: 0; }
+    .canvas-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid rgba(219, 227, 239, .22); color: #d7e4f7; background: var(--ink-soft); }
+    .canvas-heading strong { color: #fff; font-size: 13px; }
+    .canvas-heading span { color: #9fb1ca; font-size: 12px; text-align: right; }
+    #cy, #globalCy {
+      min-height: 590px; width: 100%;
+      background-color: var(--canvas);
+      background-image: radial-gradient(var(--canvas-grid) 1px, transparent 1px);
+      background-size: 18px 18px;
+    }
+    #globalCy { min-height: 640px; }
+    .canvas-caption { min-height: 36px; margin: 0; padding: 9px 14px; color: #a9bad0; background: var(--ink-soft); font-size: 12px; }
+    .scope-path { color: var(--text); font: 600 13px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    .network-metrics { margin: 8px 0 13px; color: var(--muted); font-size: 13px; line-height: 1.55; white-space: pre-line; }
+    .network-metrics strong { color: var(--text); }
+    .selection-title { display: flex; align-items: start; justify-content: space-between; gap: 8px; margin-top: 9px; }
+    .selection-title strong { display: block; font-size: 18px; line-height: 1.15; word-break: break-word; }
+    .location { margin: 5px 0 12px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .detail-actions { display: flex; gap: 8px; margin-bottom: 13px; }
+    .detail-block { border-top: 1px solid #edf1f7; padding: 12px 0; }
+    .detail-list { list-style: none; margin: 7px 0 0; padding: 0; max-height: 120px; overflow: auto; }
+    .detail-list button { display: block; width: 100%; border: 0; border-radius: 6px; padding: 5px; text-align: left; background: transparent; color: var(--text); }
+    .detail-list button:hover { background: #f1f5f9; color: var(--accent); }
+    .detail-list small { color: var(--muted); }
+    .edge-evidence { margin: 7px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .file-pane { overflow: hidden; }
+    .file-pane-header { padding: 14px; border-bottom: 1px solid #edf1f7; }
+    .file-pane-header h2 { margin: 0; }
+    .file-path { margin: 7px 0 0; color: var(--text); font: 600 14px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    .file-meta, .file-symbol-status { margin: 5px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .file-symbol-status { padding: 10px 14px; border-bottom: 1px solid #edf1f7; }
+    .file-symbol-list { list-style: none; margin: 0; padding: 0 14px 14px; max-height: 680px; overflow: auto; }
+    .file-symbol-actions { display: flex; padding: 0 14px 14px; }
+    .file-symbol-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 11px 0; border-bottom: 1px solid #edf1f7; }
+    .file-symbol-item:last-child { border-bottom: 0; }
+    .file-symbol-button { min-width: 0; border: 0; padding: 0; color: var(--text); background: transparent; font-weight: 650; text-align: left; overflow-wrap: anywhere; }
+    .file-symbol-button:hover { color: var(--accent); }
+    .file-symbol-signature { grid-column: 1 / -1; color: var(--muted); font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    .file-symbol-location { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
+    pre { max-height: 250px; margin: 8px 0 0; overflow: auto; border-radius: 9px; padding: 11px; background: #0d1625; color: #dae8f9; font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; }
+    .tabs { display: flex; gap: 4px; margin: 17px 0 10px; }
+    .tab { border: 0; border-radius: 8px; padding: 8px 11px; background: transparent; color: var(--muted); font-weight: 650; }
+    .tab:hover { background: #eaf0f8; color: var(--text); }
+    .tab.active { background: #dbeafe; color: #1d4ed8; }
+    .query-panel { padding: 14px; }
+    .query-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .query-controls input { min-width: min(280px, 100%); }
+    table { width: 100%; margin-top: 12px; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px; border-bottom: 1px solid #edf1f7; text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
     tr.row { cursor: pointer; }
-    tr.row:hover { background: #f6f8fa; }
-    pre { background: #0d1117; color: #e6edf3; padding: 12px; border-radius: 6px;
-          overflow: auto; max-height: 360px; font-size: 12px; line-height: 1.45; }
-    .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
-    .tabs button { border: none; background: none; color: var(--muted); padding: 6px 10px;
-                   border-bottom: 2px solid transparent; }
-    .tabs button.active { color: var(--head); border-bottom-color: var(--accent); }
-    .note { color: var(--muted); font-size: 12px; }
-    .err { color: var(--bad); }
-    a { color: var(--accent); }
+    tr.row:hover { background: #f7faff; }
+    .muted { color: var(--muted); }
+    .error { color: #be123c; }
+    .empty-state { color: var(--muted); padding: 16px 0; }
+    .demo-panel { padding: 14px; }
+    .video-demo {
+      position: fixed; z-index: 30; right: 24px; bottom: 24px; width: min(550px, calc(100vw - 48px));
+      display: none; border: 1px solid rgba(255, 255, 255, .23); border-radius: 14px; padding: 13px 15px;
+      color: #fff; background: rgba(9, 17, 31, .92); box-shadow: 0 14px 42px rgba(0, 0, 0, .30); backdrop-filter: blur(12px);
+    }
+    .video-demo.visible { display: flex; align-items: center; gap: 12px; }
+    .video-demo .caption { flex: 1; min-width: 0; }
+    .video-demo .caption strong, .video-demo .caption span { display: block; }
+    .video-demo .caption span { margin-top: 2px; color: #b9cbe5; font-size: 12px; }
+    .video-demo .btn { flex: 0 0 auto; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    body.video-mode .shell { max-width: 1600px; padding-top: 8px; }
+    body.video-mode .hero { margin: 8px 0 10px; }
+    body.video-mode .hero p { display: none; }
+    body.video-mode #cy, body.video-mode #globalCy { min-height: 520px; }
+    @media (max-width: 1120px) {
+      .workspace { grid-template-columns: 200px minmax(0, 1fr); }
+      .details { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+      .details > h2, .selection-title, .location, .detail-actions { grid-column: 1 / -1; }
+      .detail-block { border-top: 0; padding: 0; }
+    }
+    @media (max-width: 760px) {
+      .shell { padding: 12px; }
+      .hero { display: block; }
+      .workspace { grid-template-columns: 1fr; }
+      .controls { position: static; }
+      .details { display: block; }
+      .detail-block { border-top: 1px solid #edf1f7; padding: 12px 0; }
+      #cy, #globalCy { min-height: 430px; }
+      .file-symbol-list { max-height: none; }
+      .file-symbol-item { grid-template-columns: minmax(0, 1fr); }
+      .file-symbol-item .kind-pill { justify-self: start; }
+      .video-demo { right: 12px; bottom: 12px; width: calc(100vw - 24px); }
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="nav"><a href="index.html">Health</a> · <a href="graph.html" class="cur">Explorer</a></div>
-    <h1>KGraph Explorer</h1>
-    <p class="sub">Interactive code-graph over <span id="dbtag">kgraph.db</span>. Center a symbol → explore its callers/callees; or resolve an ops table.</p>
-
-    <!-- Snapshot/demo mode: shown only on the static Pages site (no live API). -->
-    <div id="demoPanel" class="card" style="display:none">
-      <div class="bar">
-        <b>Demo view:</b>
-        <select id="demoSelect" onchange="loadSnapshot(this.value)"></select>
-        <span id="demoTitle" class="tag"></span>
+  <main class="shell">
+    <header class="topbar">
+      <nav class="crumb" aria-label="KGraph navigation"><a href="index.html">Health</a><span>·</span><strong>Explorer</strong></nav>
+      <span class="db-tag" id="dbtag">kgraph.db</span>
+    </header>
+    <section class="hero">
+      <div>
+        <h1>Visual Code Graph Explorer</h1>
+        <p>Start with the Linux-wide dependency map, then drill into compiler-aware, evidence-backed code relationships.</p>
       </div>
-      <p class="note">Static demo — pre-baked snapshots (Pages can't query the index live).
-        Run <span class="tag">kgraph view</span> locally for full interactive exploration.</p>
+    </section>
+
+    <section class="search-row" data-live>
+      <label class="sr-only" for="q">Find a symbol</label>
+      <input id="q" type="text" autocomplete="off" placeholder="Find a symbol — vfs_read, file_operations…" />
+      <label class="sr-only" for="kind">Symbol kind</label>
+      <select id="kind" aria-label="Symbol kind"><option value="">Any kind</option>
+        <option value="function">Function</option><option value="struct">Struct</option><option value="field">Field</option>
+        <option value="macro">Macro</option><option value="typedef">Typedef</option><option value="global_var">Global variable</option></select>
+      <button id="searchBtn" class="btn btn-primary" type="button">Search</button>
+      <div id="searchResults" class="search-results" role="listbox" aria-label="Symbol results"></div>
+    </section>
+
+    <section id="demoPanel" class="panel demo-panel" style="display:none">
+      <div class="query-controls"><strong>Static demo</strong><label class="sr-only" for="demoSelect">Snapshot</label><select id="demoSelect"></select><span id="demoTitle" class="muted"></span></div>
+      <p class="muted">Pre-baked snapshots are available here. Run <code>kgraph view</code> locally for the interactive graph.</p>
       <div id="demoOut"></div>
-    </div>
+    </section>
 
-    <div class="bar">
-      <input id="q" type="text" placeholder="symbol name (e.g. vfs_read, file_operations)" />
-      <select id="kind"><option value="">any kind</option>
-        <option>function</option><option>struct</option><option>field</option>
-        <option>macro</option><option>typedef</option><option>global_var</option></select>
-      <button id="searchBtn" class="primary">Search</button>
-      <span id="centerTag" class="tag"></span>
-    </div>
+    <section class="tabs" data-live aria-label="Explorer views">
+      <button id="tabMap" class="tab active" type="button">Linux map</button>
+      <button id="tabFile" class="tab" type="button">Indexed symbols</button>
+      <button id="tabGraph" class="tab" type="button">Symbol graph</button>
+      <button id="tabOps" class="tab" type="button">Ops bindings</button>
+      <button id="tabChain" class="tab" type="button">Call chain</button>
+    </section>
 
-    <div class="tabs">
-      <button id="tabGraph" class="active" onclick="showTab('graph')">Neighborhood</button>
-      <button id="tabOps" onclick="showTab('ops')">Ops table</button>
-      <button id="tabChain" onclick="showTab('chain')">Call chain</button>
-    </div>
+    <section id="paneMap" class="workspace" data-live>
+      <aside class="panel controls">
+        <h2>Linux network</h2>
+        <div class="control-group">
+          <span class="control-label">Current scope</span>
+          <div id="networkScope" class="scope-path">Linux</div>
+          <button id="networkBackBtn" class="btn" type="button" disabled>Up one level</button>
+        </div>
+        <div class="control-group">
+          <label class="control-label" for="networkLayout">Layout</label>
+          <select id="networkLayout" class="filter-select"><option value="force">Dependency network</option><option value="rings">Subsystem rings</option></select>
+          <button id="networkFitBtn" class="btn" type="button">Fit map</button>
+        </div>
+        <div class="control-group">
+          <span class="control-label">Aggregate relationship types</span>
+          <fieldset id="globalEdgeTypes">
+            <label class="edge-filter"><input type="checkbox" value="calls" checked /> Calls</label>
+            <label class="edge-filter"><input type="checkbox" value="ops_bind" checked /> Function-pointer binding</label>
+            <label class="edge-filter"><input type="checkbox" value="references" /> References</label>
+            <label class="edge-filter"><input type="checkbox" value="contains" /> Contains</label>
+            <label class="edge-filter"><input type="checkbox" value="implements" /> Implements</label>
+            <label class="edge-filter"><input type="checkbox" value="type_of" /> Type relation</label>
+          </fieldset>
+          <label class="edge-filter"><input id="networkInternal" type="checkbox" /> Show internal module links</label>
+        </div>
+        <div class="control-group legend" aria-label="Global map legend">
+          <span class="legend-item"><i class="legend-line"></i>calls</span>
+          <span class="legend-item"><i class="legend-line ops"></i>ops binding</span>
+          <span class="legend-item"><i class="legend-line reference"></i>other relation</span>
+        </div>
+      </aside>
 
-    <!-- Neighborhood tab -->
-    <div id="paneGraph" class="grid">
-      <div class="card">
-        <div id="cy"></div>
-        <div class="note" id="cap"></div>
-      </div>
-      <div class="card side">
-        <h3>Callers</h3><ul id="callers"></ul>
-        <h3>Callees</h3><ul id="callees"></ul>
-        <h3>Body</h3><div id="body" class="note">click a function</div>
-      </div>
-    </div>
+      <section class="panel canvas-panel">
+        <header class="canvas-heading"><strong id="networkTitle">Linux code network</strong><span id="networkStatus">Loading aggregate map…</span></header>
+        <div id="globalCy" role="application" aria-label="Interactive global Linux code network"></div>
+        <p id="networkCap" class="canvas-caption">Modules are directory aggregates of real compiler-indexed relationships. Double-click a directory to drill down, or a file to open its indexed symbols.</p>
+      </section>
 
-    <!-- Ops tab -->
-    <div id="paneOps" class="card" style="display:none">
-      <div class="bar">
-        <input id="field" type="text" placeholder="ops field (e.g. read_iter)" />
-        <input id="st" type="text" placeholder="struct filter (optional, e.g. ext4_file_operations)" style="min-width:200px" />
-        <button id="opsBtn" class="primary">Resolve</button>
-        <span id="opsCount" class="note"></span>
-      </div>
-      <table id="opsTable">
-        <thead><tr><th>ops table</th><th>→ impl</th><th>field</th><th>file:line</th><th>conf</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
+      <aside class="panel details">
+        <h2>Module</h2>
+        <div class="selection-title"><strong id="networkSelectionName">No selection</strong><span id="networkSelectionKind" class="kind-pill" style="display:none">aggregate</span></div>
+        <p id="networkSelectionPath" class="location">Select a module to inspect its indexed code volume and dependency flow.</p>
+        <p id="networkMetrics" class="network-metrics">The overview is grouped by top-level Linux directories, not sampled symbols.</p>
+        <div class="detail-actions"><button id="networkEnterBtn" class="btn" type="button" disabled>Explore module</button></div>
+        <section class="detail-block"><h3>Selected relationship</h3><p id="networkEvidence" class="edge-evidence">Select an edge to see the aggregated relationship count and direction.</p></section>
+        <section class="detail-block"><h3>How to navigate</h3><p class="edge-evidence">Double-click a directory to reveal its immediate children. Double-click a file to inspect its indexed symbols and source locations.</p></section>
+      </aside>
+    </section>
 
-    <!-- Call chain tab -->
-    <div id="paneChain" class="card" style="display:none">
-      <div class="bar">
-        <input id="chainName" type="text" placeholder="function (e.g. vfs_read)" />
-        <button id="chainBtn" class="primary">Trace</button>
-        <span id="chainCount" class="note"></span>
-      </div>
-      <div id="chainOut" class="note">enter a function to trace its call chain up to a root (syscall / entry).</div>
-    </div>
-  </div>
+    <section id="paneFile" class="panel file-pane" style="display:none" data-live>
+      <header class="file-pane-header">
+        <h2>Indexed symbols</h2>
+        <p id="filePath" class="file-path">No file selected</p>
+        <p id="fileMeta" class="file-meta">Select a leaf file in the Linux map to inspect its compiler-indexed symbols.</p>
+      </header>
+      <p id="fileSymbolsStatus" class="file-symbol-status" role="status">Choose a file node, then use Open indexed symbols.</p>
+      <ul id="fileSymbolsList" class="file-symbol-list" aria-label="Indexed file symbols"></ul>
+      <div class="file-symbol-actions"><button id="fileSymbolsMoreBtn" class="btn" type="button" hidden>Load more indexed symbols</button></div>
+    </section>
 
-  <!-- Cytoscape.js via CDN (Phase 1, local). Phase 2 will vendor this for offline Pages. -->
+    <section id="paneGraph" class="workspace" style="display:none" data-live>
+      <aside class="panel controls">
+        <h2>Explore</h2>
+        <div class="control-group">
+          <label class="control-label" for="depth">Neighborhood depth</label>
+          <select id="depth" class="filter-select"><option value="1">1 hop · focused</option><option value="2">2 hops · context</option></select>
+        </div>
+        <div class="control-group">
+          <label class="control-label" for="layout">Layout</label>
+          <select id="layout" class="filter-select"><option value="force">Relationship</option><option value="flow">Directed flow</option><option value="rings">Concentric</option></select>
+          <button id="fitBtn" class="btn" type="button">Fit graph</button>
+        </div>
+        <div class="control-group">
+          <span class="control-label">Relationship types</span>
+          <fieldset id="edgeTypes">
+            <label class="edge-filter"><input type="checkbox" value="calls" checked /> Calls</label>
+            <label class="edge-filter"><input type="checkbox" value="ops_bind" checked /> Function-pointer binding</label>
+            <label class="edge-filter"><input type="checkbox" value="references" /> References</label>
+            <label class="edge-filter"><input type="checkbox" value="contains" /> Contains</label>
+            <label class="edge-filter"><input type="checkbox" value="implements" /> Implements</label>
+            <label class="edge-filter"><input type="checkbox" value="type_of" /> Type relation</label>
+          </fieldset>
+        </div>
+        <div class="control-group legend" aria-label="Edge legend">
+          <span class="legend-item"><i class="legend-line"></i>call</span>
+          <span class="legend-item"><i class="legend-line ops"></i>ops binding</span>
+          <span class="legend-item"><i class="legend-line reference"></i>other relation</span>
+        </div>
+      </aside>
+
+      <section class="panel canvas-panel">
+        <header class="canvas-heading"><strong id="centerTag">Search for a symbol to begin</strong><span id="fragmentStatus"></span></header>
+        <div id="cy" role="application" aria-label="Interactive code relationship graph"></div>
+        <p id="cap" class="canvas-caption">The graph is fetched as a bounded local fragment. Select a node or edge for evidence.</p>
+      </section>
+
+      <aside class="panel details">
+        <h2>Evidence</h2>
+        <div class="selection-title"><strong id="selectionName">No selection</strong><span id="selectionKind" class="kind-pill" style="display:none"></span></div>
+        <p id="selectionLocation" class="location">Choose a graph node to inspect its definition and adjacent relationships.</p>
+        <div class="detail-actions"><button id="focusBtn" class="btn" type="button" disabled>Focus selected</button></div>
+        <section class="detail-block"><h3>Selected relationship</h3><p id="edgeEvidence" class="edge-evidence">Select an edge to see type, confidence, and observed source location.</p></section>
+        <section class="detail-block"><h3>Callers</h3><ul id="callers" class="detail-list"><li class="muted">—</li></ul></section>
+        <section class="detail-block"><h3>Callees</h3><ul id="callees" class="detail-list"><li class="muted">—</li></ul></section>
+        <section class="detail-block"><h3>Source</h3><div id="body" class="muted">—</div></section>
+      </aside>
+    </section>
+
+    <section id="paneOps" class="panel query-panel" style="display:none" data-live>
+      <div class="query-controls"><label class="sr-only" for="field">Function-pointer field</label><input id="field" type="text" placeholder="Function-pointer field — read_iter" />
+        <label class="sr-only" for="st">Optional struct filter</label><input id="st" type="text" placeholder="Optional struct filter" />
+        <button id="opsBtn" class="btn btn-primary" type="button">Resolve bindings</button><span id="opsCount" class="muted"></span></div>
+      <table id="opsTable"><thead><tr><th>Ops table</th><th>Implementation</th><th>Field</th><th>Evidence</th><th>Confidence</th></tr></thead><tbody></tbody></table>
+    </section>
+
+    <section id="paneChain" class="panel query-panel" style="display:none" data-live>
+      <div class="query-controls"><label class="sr-only" for="chainName">Function</label><input id="chainName" type="text" placeholder="Function — vfs_read" />
+        <button id="chainBtn" class="btn btn-primary" type="button">Trace callers</button><span id="chainCount" class="muted"></span></div>
+      <div id="chainOut" class="empty-state">Trace one caller path from a function toward an entry point.</div>
+    </section>
+  </main>
+
+  <aside id="videoDemo" class="video-demo" aria-live="polite">
+    <div class="caption"><strong id="demoZh">真实 Linux 代码图谱</strong><span id="demoEn">Real Linux code graph</span></div>
+    <button id="startDemoBtn" class="btn btn-primary" type="button">Start 30s demo</button>
+  </aside>
+
   <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
   <script src="graph.js"></script>
 </body>

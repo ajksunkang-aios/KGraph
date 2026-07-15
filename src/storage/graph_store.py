@@ -98,12 +98,46 @@ class GraphStore(ABC):
     @abstractmethod
     def get_neighborhood(self, scip_symbol: str, depth: int = 1,
                          edge_types: Optional[list[str]] = None,
-                         summary: bool = False) -> dict:
+                         summary: bool = False,
+                         max_nodes: int = 160,
+                         max_edges: int = 360) -> dict:
         """
         Get N-hop neighborhood around a symbol.
 
-        Returns dict with: center_symbol, nodes (list), edges (list).
-        If summary=True, nodes contain only name + file:line (compact).
+        Returns a bounded graph fragment with: center_symbol, center, nodes,
+        edges, truncation metadata, and the applied limits.  Edges preserve
+        direction, type, confidence, and source evidence so callers can render
+        a true multi-edge graph instead of inferring links from the node list.
+        If summary=True, node records omit non-essential display fields.
+        """
+        ...
+
+    @abstractmethod
+    def get_global_network(self, prefix: Optional[str] = None,
+                           edge_types: Optional[list[str]] = None,
+                           include_internal: bool = False,
+                           max_nodes: int = 100,
+                           max_edges: int = 320) -> dict:
+        """Return a bounded, directory-aggregated view of the whole code graph.
+
+        The response represents modules/directories as nodes and aggregates
+        real typed relationships between their defined symbols.  ``prefix``
+        narrows the map to the immediate children of one directory while
+        retaining a single aggregate node for relationships outside that scope.
+        This keeps a global explorer useful for large indexes without sending
+        every symbol and edge to the browser.
+        """
+        ...
+
+    @abstractmethod
+    def get_file_symbols(self, path: str, limit: int = 500,
+                         offset: int = 0) -> Optional[dict]:
+        """Return the indexed definitions belonging to one source file.
+
+        ``path`` is an exact, source-tree-relative file path.  The result
+        contains file metadata, a bounded ordered page of its symbols, and
+        total/truncation/pagination metadata for a source explorer.  ``None``
+        means the path is not an indexed file.
         """
         ...
 

@@ -296,8 +296,12 @@ GraphView 在 `graphview/` 目录下有两面:
 跑**合成检索金丝雀**、产出 `metrics.json`。最近 7 次 run 渲染成零依赖的静态 7-day list(可构建性 ✓/✗、
 金丝雀 M/N、符号/边计数、耗时),由 [`deploy-graphview.yml`](.github/workflows/deploy-graphview.yml) 发布到 GitHub Pages。
 
-**交互式探索器**(`kgraph view`)—— 本地只读 HTTP server(stdlib,零新依赖),在你自己的 `kgraph.db` 上
-服务代码图谱:搜索 → 居中符号 → 探索 caller/callee/邻域;解析 **ops 表**(`read_iter` → 所有实现);
+**交互式探索器**(`kgraph view`)—— 本地只读 HTTP server(stdlib,零新依赖)，先在你自己的
+`kgraph.db` 上展示 Linux 全局依赖网络。总览按目录聚合真实的编译器索引关系，因此 47.9 万符号的
+内核索引仍可交互，而不会把原始符号图下载到浏览器。选中或双击目录可逐层下钻；直接的源码文件叶子
+可打开该文件的编译器索引定义（函数、结构体、字段、宏和全局变量）及源码行；选择某个定义会进入其
+精确 SCIP 符号图，也可搜索 → 选择精确 SCIP 符号。之后可探索受限的 1–2 跳图 fragment，保留真实有向多重边、
+关系类型、置信度和源码证据；还可筛选关系、切换布局、解析 **ops 表**(`read_iter` → 所有实现)，
 或追**调用链**上溯到 syscall 根。同源(server 同时提供页面和 API → 无 CORS)。
 
 ```bash
@@ -305,8 +309,19 @@ kgraph view                       # 或:python view/server.py --db <kgraph.db> -
 # → http://localhost:8000/graph.html   (健康看板:http://localhost:8000/)
 ```
 
-探索器三个视图:**邻域**(Cytoscape.js 图谱)、**ops 表**、**调用链**。
-(Pages 上的只读预烘焙子图 demo 是后续计划;本地探索器已上线。)
+探索器有五个视图：**Linux 全局图**（目录网络与文件叶子）、**已索引符号**（单文件、可分页的
+编译器索引定义）、**图 fragment**(Cytoscape.js)、**ops 绑定**、**调用链**。它会主动限制单次
+图和文件列表响应，而不是把完整内核图谱下载到浏览器。当前 C/C++ 索引记录全局变量，尚不等同于
+每一个自动局部变量。
+
+要用真实 Linux 索引录制 30 秒、中英双语字幕的 macOS 产品演示：
+
+```bash
+scripts/record-graph-demo.sh ~/Movies/kgraph-demo
+```
+
+该脚本打开 `graph.html?demo=video`，不采集麦克风音频，并直接写出 30 秒 QuickTime MOV；首次使用需要授予 macOS
+“屏幕录制”权限。
 
 ---
 
