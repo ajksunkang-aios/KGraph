@@ -1,11 +1,11 @@
 name: Deploy GraphView (Pages)
 
-# Publishes the static graphview/ health dashboard to GitHub Pages.
-# Source for the site is the graphview/ directory on main (which the daily
+# Publishes the static view/static/ health dashboard to GitHub Pages.
+# Source for the site is the view/static/ directory on main (which the daily
 # Linux Build & Index Probe keeps up to date by committing metrics.jsonl).
 #
 # Triggers:
-#   - push to main under graphview/**   (human edits to dashboard source)
+#   - push to main under view/static/**   (human edits to dashboard source)
 #   - workflow_run after the probe        (fresh metrics.jsonl committed by CI)
 #   - workflow_dispatch                   (manual)
 #
@@ -15,7 +15,7 @@ name: Deploy GraphView (Pages)
 on:
   push:
     branches: [main]
-    paths: ['graphview/**']
+    paths: ['view/static/**']
   workflow_run:
     workflows: ["Linux Build & Index Probe"]
     types: [completed]
@@ -46,14 +46,14 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      # Upload the contents of graphview/ as the site root:
-      #   graphview/index.html      ->  /index.html
-      #   graphview/app.js          ->  /app.js
-      #   graphview/data/metrics.jsonl -> /data/metrics.jsonl  (fetched by app.js)
+      # Upload the contents of view/static/ as the site root:
+      #   view/static/index.html      ->  /index.html
+      #   view/static/app.js          ->  /app.js
+      #   view/static/data/metrics.jsonl -> /data/metrics.jsonl  (fetched by app.js)
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: graphview
+          path: view/static
 
       - name: Deploy to GitHub Pages
         id: deploy

@@ -289,7 +289,7 @@ socket_file_ops         → sock_read_iter        @ net/socket.c
 
 ## GraphView — 健康看板 + 交互式探索器
 
-GraphView 在 `graphview/` 目录下有两面:
+GraphView 在 `view/` 目录下有两面 (前端在 `view/static/`):
 
 **健康看板** —— KGraph 每天在**免费 GitHub Actions runner** 上自动证明能在 Linux 主线构建出**正确**的索引。
 [`Linux Build & Index Probe`](.github/workflows/linux-build-probe.yml) 拉取 `torvalds/linux`、构建+索引+灌库、
@@ -414,7 +414,7 @@ KGraph/
 │   └── server.py                   # `kgraph view` — 本地探索器（HTTP API + 静态）
 ├── bench/
 │   └── health_check.py             # 合成检索金丝雀 + metrics 收集
-├── graphview/                      # 健康看板 + 交互式探索器
+├── view/                           # 交互式探索器 (server.py + static/ 前端)
 │   ├── index.html · app.js         # 健康 7-day list
 │   ├── graph.html · graph.js       # 探索器（邻域 · ops 表 · 调用链）
 │   └── data/metrics.jsonl          # 每次 CI run 一行（自动提交）

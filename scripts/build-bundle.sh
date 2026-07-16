@@ -58,7 +58,6 @@ cp -r "${PROJECT_ROOT}/mcp"        "${BUNDLE_DIR}/lib/kgraph/"
 cp -r "${PROJECT_ROOT}/scripts"    "${BUNDLE_DIR}/lib/kgraph/"
 cp -r "${PROJECT_ROOT}/thirdparty" "${BUNDLE_DIR}/lib/kgraph/"
 cp -r "${PROJECT_ROOT}/view"       "${BUNDLE_DIR}/lib/kgraph/"
-cp -r "${PROJECT_ROOT}/graphview"  "${BUNDLE_DIR}/lib/kgraph/"
 
 # Clean __pycache__ from bundle
 find "${BUNDLE_DIR}" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

@@ -675,7 +675,7 @@ ext4_file_operations <span class="op">→</span> ext4_file_read_iter
   <div class="wrap">
     <div class="eyebrow"><span class="sn">07</span><span class="live-dot"></span><span class="en">Health dashboard</span><span class="zh">健康看板</span></div>
     <h2><span class="en">Running on real mainline — every commit</span><span class="zh">每个 commit 都在真实主线内核上跑</span></h2>
-    <p class="sec-lede"><span class="en">Each CI run on <code>torvalds/linux</code> builds the kernel, indexes it with scip-clang, ingests into KGraph, and runs a synthetic retrieval canary. Live from <code>graphview/data/metrics.jsonl</code>.</span><span class="zh">每次在 <code>torvalds/linux</code> 上的 CI：构建内核 → scip-clang 索引 → 入库 → 跑合成检索金丝雀。实时取自 <code>graphview/data/metrics.jsonl</code>。</span></p>
+    <p class="sec-lede"><span class="en">Each CI run on <code>torvalds/linux</code> builds the kernel, indexes it with scip-clang, ingests into KGraph, and runs a synthetic retrieval canary. Live from <code>view/static/data/metrics.jsonl</code>.</span><span class="zh">每次在 <code>torvalds/linux</code> 上的 CI：构建内核 → scip-clang 索引 → 入库 → 跑合成检索金丝雀。实时取自 <code>view/static/data/metrics.jsonl</code>。</span></p>
     <div class="dash">
       <div class="d-cards" id="dCards"></div>
       <div class="d-table-wrap">
@@ -691,8 +691,8 @@ ext4_file_operations <span class="op">→</span> ext4_file_read_iter
       </div>
       <p class="d-foot">
         <span class="en">Buildable = make + scip-clang index + kgraph ingest all succeeded. &middot; Canary = synthetic retrieval known-answer checks (M/N). &middot;</span><span class="zh">可构建 = make + scip-clang 索引 + kgraph 入库 全部成功。&middot; 金丝雀 = 合成检索已知答案检查 (M/N)。&middot;</span>
-        <a href="graphview/index.html"><span class="en">Full dashboard &nearr;</span><span class="zh">完整仪表盘 &nearr;</span></a> &middot;
-        <a href="graphview/graph.html"><span class="en">Graph explorer &nearr;</span><span class="zh">图浏览器 &nearr;</span></a>
+        <a href="view/static/index.html"><span class="en">Full dashboard &nearr;</span><span class="zh">完整仪表盘 &nearr;</span></a> &middot;
+        <a href="view/static/graph.html"><span class="en">Graph explorer &nearr;</span><span class="zh">图浏览器 &nearr;</span></a>
       </p>
     </div>
   </div>
@@ -945,13 +945,13 @@ ext4_file_operations <span class="op">→</span> ext4_file_read_iter
   }
   async function main() {
     try {
-      const res = await fetch("graphview/data/metrics.jsonl", { cache: "no-store" });
+      const res = await fetch("view/static/data/metrics.jsonl", { cache: "no-store" });
       if (!res.ok) throw new Error(res.status);
       const text = await res.text();
       const runs = text.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => JSON.parse(l));
       render(runs);
     } catch (e) {
-      $("dRows").innerHTML = `<tr><td colspan="10" class="d-none">Could not load <span style="font-family:var(--mono)">graphview/data/metrics.jsonl</span> (${esc(e.message)}). Serve over HTTP, e.g. <span style="font-family:var(--mono)">python3 -m http.server</span>.</td></tr>`;
+      $("dRows").innerHTML = `<tr><td colspan="10" class="d-none">Could not load <span style="font-family:var(--mono)">view/static/data/metrics.jsonl</span> (${esc(e.message)}). Serve over HTTP, e.g. <span style="font-family:var(--mono)">python3 -m http.server</span>.</td></tr>`;
     }
   }
   main();

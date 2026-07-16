@@ -3,7 +3,7 @@
 KGraph View — local interactive code-graph explorer.
 
 Launches a lightweight stdlib HTTP server that:
-  - serves the `graphview/` static frontend (health dashboard + explorer), and
+  - serves the `view/static/` static frontend (health dashboard + explorer), and
   - exposes a read-only JSON `/api/*` wrapping SQLiteStore's query methods.
 
 Because the same server serves the page AND the API, they are same-origin — no
@@ -48,7 +48,11 @@ _sr = _ilu.module_from_spec(_sr_spec)
 _sr_spec.loader.exec_module(_sr)
 read_source_with_lineno = _sr.read_source_with_lineno
 
-GRAPHVIEW_DIR = _PROJECT / "graphview"
+# Static frontend lives next to this file under view/static/ (both in the repo
+# and in the npm bundle's lib/kgraph/view/static/). Resolves via _HERE (the
+# view/ dir) so it works regardless of whether _PROJECT is the repo root or
+# the bundle lib dir.
+GRAPHVIEW_DIR = _HERE / "static"
 
 # A live kernel graph can contain hundreds of thousands of symbols.  The View
 # API is intentionally a fragment service, not a whole-graph download endpoint.
@@ -230,7 +234,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # pragma: no cover - defensive
             self._send_err(f"{type(e).__name__}: {e}", status=500)
 
-    # ── static (graphview/) ──
+    # ── static (view/static/) ──
     def _static(self, path):
         rel = path.lstrip("/") or "index.html"
         if rel == "graph":
@@ -457,7 +461,7 @@ def main(argv=None) -> int:
     _ROOT_PATH = Path(args.root or os.environ.get("KGRAPH_ROOT") or Path.cwd())
 
     if not GRAPHVIEW_DIR.is_dir():
-        print(f"ERROR: graphview dir not found: {GRAPHVIEW_DIR}", file=sys.stderr)
+        print(f"ERROR: view/static dir not found: {GRAPHVIEW_DIR}", file=sys.stderr)
         return 1
 
     url = f"http://localhost:{args.port}/graph.html"

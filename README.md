@@ -299,7 +299,7 @@ one new `GraphStore` — the parser, MCP tools, and agent integration don't chan
 
 ## GraphView — Health Dashboard + Interactive Explorer
 
-GraphView has two sides, both in the `graphview/` directory:
+GraphView has two sides, both in the `view/` directory (frontend under `view/static/`):
 
 **Health dashboard** — KGraph continuously proves it can build a **correct** index on Linux
 mainline, automatically every day on free GitHub Actions runners. The
@@ -431,7 +431,7 @@ KGraph/
 │   └── server.py                   # `kgraph view` — local explorer (HTTP API + static)
 ├── bench/
 │   └── health_check.py             # synthetic retrieval canary + metrics collector
-├── graphview/                      # health dashboard + interactive explorer
+├── view/                           # interactive explorer (server.py + static/ frontend)
 │   ├── index.html · app.js         # health 7-day list
 │   ├── graph.html · graph.js       # explorer (neighborhood · ops table · call chain)
 │   └── data/metrics.jsonl          # one row per CI run (auto-committed)

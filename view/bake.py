@@ -3,7 +3,7 @@
 Bake curated GraphView snapshots for the static GitHub-Pages demo.
 
 Pages can't run `view/server.py` (no live SQLite), so we pre-bake a few
-high-impact views into JSON under graphview/data/. The JSON shapes are
+high-impact views into JSON under view/static/data/. The JSON shapes are
 **identical** to what graph.js consumes from /api/*, so the explorer renders
 snapshots unchanged in snapshot mode (selected via data/manifest.json).
 
@@ -14,7 +14,7 @@ Curated views (the KGraph highlight reel):
   - vfs_read function body  — actual source (get_function_body)
 
 Usage:
-    python view/bake.py --db <kgraph.db> --root <linux-src> --out graphview/data
+    python view/bake.py --db <kgraph.db> --root <linux-src> --out view/static/data
 """
 from __future__ import annotations
 
@@ -110,7 +110,7 @@ def main(argv=None) -> int:
     ap.add_argument("--db", required=True)
     ap.add_argument("--root", default=".",
                     help="kernel source root (for reading function bodies)")
-    ap.add_argument("--out", default="graphview/data")
+    ap.add_argument("--out", default="view/static/data")
     args = ap.parse_args(argv)
 
     store = SQLiteStore(args.db)

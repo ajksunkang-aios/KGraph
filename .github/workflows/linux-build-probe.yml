@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120  # safety: build ~22min + scip-clang 30-90min + ingest
     permissions:
-      contents: write      # to commit graphview/data/metrics.jsonl
+      contents: write      # to commit view/static/data/metrics.jsonl
 
     steps:
       - name: Checkout KGraph
@@ -193,7 +193,7 @@ jobs:
 
       # ── Phase 4: health metrics → metrics.json ──
       # Synthetic retrieval canary + db stats → metrics.json (the GraphView
-      # contract). Also appends a one-line summary to graphview/data/metrics.jsonl.
+      # contract). Also appends a one-line summary to view/static/data/metrics.jsonl.
 
       - name: Health check → metrics.json
         id: health
@@ -204,7 +204,7 @@ jobs:
             --index-scip linux/index.scip \
             --linux-ref "${{ env.LINUX_REF }}" \
             --linux-head "${HEAD_SHORT}" \
-            --append-jsonl graphview/data/metrics.jsonl \
+            --append-jsonl view/static/data/metrics.jsonl \
             --out metrics.json
 
       - name: Upload metrics.json (14-day artifact)
@@ -218,7 +218,7 @@ jobs:
 
       # ── Phase 5: bake GraphView snapshots for the static Pages demo ──
       # Pre-bakes curated views (ops table / call chain / struct layout /
-      # function body) into graphview/data/ — Pages can't run the live API, so
+      # function body) into view/static/data/ — Pages can't run the live API, so
       # the explorer renders these in snapshot mode. JSON shapes match /api/*.
 
       - name: Bake GraphView snapshots
@@ -227,7 +227,7 @@ jobs:
           python3 view/bake.py \
             --db linux/.kgraph/kgraph.db \
             --root linux \
-            --out graphview/data
+            --out view/static/data
 
       # Commit metrics.jsonl + baked snapshots so the static GraphView (health
       # list + Pages explorer snapshots) updates each run.
@@ -238,9 +238,9 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add graphview/data/metrics.jsonl \
-                  graphview/data/manifest.json \
-                  graphview/data/snapshot_*.json
+          git add view/static/data/metrics.jsonl \
+                  view/static/data/manifest.json \
+                  view/static/data/snapshot_*.json
           git commit -m "chore(graphview): health metrics + snapshots for ${HEAD_SHORT}" \
             || echo "nothing to commit"
           git push
