@@ -410,14 +410,18 @@ KGraph/
 │   ├── server.py                   # MCP 服务端（13 个工具）
 │   ├── source_reader.py            # 从磁盘读函数体
 │   └── examples/                   # 各 agent 手动配置示例
-├── view/
-│   └── server.py                   # `kgraph view` — 本地探索器（HTTP API + 静态）
+├── view/                           # 交互式探索器:后端 + 静态前端
+│   ├── server.py                   #   `kgraph view` — 本地 HTTP server（API + 静态）
+│   ├── bake.py                     #   为静态 Pages demo 预烤快照
+│   └── static/                     #   server.py（及 Pages）服务的前端
+│       ├── index.html · app.js     #     健康 7-day 列表
+│       ├── graph.html · graph.js   #     探索器（Linux map · fragment · ops · 调用链）
+│       └── data/metrics.jsonl      #     每次 CI run 一行（自动提交）
 ├── bench/
 │   └── health_check.py             # 合成检索金丝雀 + metrics 收集
-├── view/                           # 交互式探索器 (server.py + static/ 前端)
-│   ├── index.html · app.js         # 健康 7-day list
-│   ├── graph.html · graph.js       # 探索器（邻域 · ops 表 · 调用链）
-│   └── data/metrics.jsonl          # 每次 CI run 一行（自动提交）
+├── eval/                           # KBench retrieval A/B 评测框架（薄编排层）
+│   ├── kgraph_eval/                #   一条命令:消费 kgraph.db → A/B → 报告
+│   └── snapshots/                  #   值得归档的 run（纳入版本管理）
 └── tests/
     ├── conftest.py                  # 共享 fixture 与合成 SCIP benchmark
     ├── unit/                        # 单元测试（纯函数，参数化）

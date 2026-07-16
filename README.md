@@ -427,14 +427,18 @@ KGraph/
 │   ├── server.py                   # MCP server (13 tools)
 │   ├── source_reader.py            # reads function bodies from disk
 │   └── examples/                   # per-agent manual config snippets
-├── view/
-│   └── server.py                   # `kgraph view` — local explorer (HTTP API + static)
+├── view/                           # interactive explorer: backend + static frontend
+│   ├── server.py                   #   `kgraph view` — local HTTP server (API + static)
+│   ├── bake.py                     #   pre-bake snapshots for the static Pages demo
+│   └── static/                     #   frontend served by server.py (and Pages)
+│       ├── index.html · app.js     #     health 7-day list
+│       ├── graph.html · graph.js   #     explorer (Linux map · fragment · ops · call chain)
+│       └── data/metrics.jsonl      #     one row per CI run (auto-committed)
 ├── bench/
 │   └── health_check.py             # synthetic retrieval canary + metrics collector
-├── view/                           # interactive explorer (server.py + static/ frontend)
-│   ├── index.html · app.js         # health 7-day list
-│   ├── graph.html · graph.js       # explorer (neighborhood · ops table · call chain)
-│   └── data/metrics.jsonl          # one row per CI run (auto-committed)
+├── eval/                           # KBench retrieval A/B harness (thin orchestration)
+│   ├── kgraph_eval/                #   one-command: consume kgraph.db → A/B → report
+│   └── snapshots/                  #   archived runs worth keeping (versioned)
 └── tests/
     ├── conftest.py                  # shared fixtures & synthetic SCIP benchmark
     ├── unit/                        # unit tests (pure functions, parametrized)
