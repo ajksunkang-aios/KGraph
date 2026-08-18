@@ -5,7 +5,7 @@
     "ops_symbol": "cxx . . $ def_blk_fops.",
     "impl_symbol": "cxx . . $ blkdev_read_iter(c5f3e27501c4297d).",
     "file_path": "block/fops.c",
-    "line": 930,
+    "line": 932,
     "field_name": "blkdev_read_iter",
     "confidence": 1.0
   },
@@ -75,7 +75,7 @@
     "ops_symbol": "cxx . . $ ext4_file_operations.",
     "impl_symbol": "cxx . . $ ext4_file_read_iter(c5f3e27501c4297d).",
     "file_path": "fs/ext4/file.c",
-    "line": 975,
+    "line": 977,
     "field_name": "ext4_file_read_iter",
     "confidence": 1.0
   },
