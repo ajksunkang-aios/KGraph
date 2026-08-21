@@ -75,7 +75,7 @@
     "ops_symbol": "cxx . . $ ext4_file_operations.",
     "impl_symbol": "cxx . . $ ext4_file_read_iter(c5f3e27501c4297d).",
     "file_path": "fs/ext4/file.c",
-    "line": 977,
+    "line": 1036,
     "field_name": "ext4_file_read_iter",
     "confidence": 1.0
   },
@@ -85,7 +85,7 @@
     "ops_symbol": "cxx . . $ hugetlbfs_file_operations.",
     "impl_symbol": "cxx . . $ hugetlbfs_read_iter(c5f3e27501c4297d).",
     "file_path": "fs/hugetlbfs/inode.c",
-    "line": 1208,
+    "line": 1207,
     "field_name": "hugetlbfs_read_iter",
     "confidence": 1.0
   },
@@ -145,7 +145,7 @@
     "ops_symbol": "cxx . . $ shmem_file_operations.",
     "impl_symbol": "cxx . . $ shmem_file_read_iter(c5f3e27501c4297d).",
     "file_path": "mm/shmem.c",
-    "line": 5153,
+    "line": 5159,
     "field_name": "shmem_file_read_iter",
     "confidence": 1.0
   },
