@@ -100,6 +100,16 @@
     "confidence": 1.0
   },
   {
+    "ops_name": "nullfs_file_operations",
+    "impl_name": "nullfs_file_read_iter",
+    "ops_symbol": "cxx . . $ nullfs_file_operations.",
+    "impl_symbol": "cxx . . $ nullfs_file_read_iter(c5f3e27501c4297d).",
+    "file_path": "fs/nullfs.c",
+    "line": 90,
+    "field_name": "nullfs_file_read_iter",
+    "confidence": 1.0
+  },
+  {
     "ops_name": "proc_iter_file_ops",
     "impl_name": "proc_reg_read_iter",
     "ops_symbol": "cxx . . $ proc_iter_file_ops.",
