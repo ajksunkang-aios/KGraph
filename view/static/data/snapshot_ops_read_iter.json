@@ -145,7 +145,7 @@
     "ops_symbol": "cxx . . $ tracing_fops.",
     "impl_symbol": "cxx . . $ seq_read_iter(c5f3e27501c4297d).",
     "file_path": "kernel/trace/trace.c",
-    "line": 3782,
+    "line": 3793,
     "field_name": "seq_read_iter",
     "confidence": 1.0
   },
