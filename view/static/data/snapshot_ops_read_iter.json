@@ -10,36 +10,6 @@
     "confidence": 1.0
   },
   {
-    "ops_name": "null_fops",
-    "impl_name": "read_iter_null",
-    "ops_symbol": "cxx . . $ null_fops.",
-    "impl_symbol": "cxx . . $ read_iter_null(c5f3e27501c4297d).",
-    "file_path": "drivers/char/mem.c",
-    "line": 650,
-    "field_name": "read_iter_null",
-    "confidence": 1.0
-  },
-  {
-    "ops_name": "zero_fops",
-    "impl_name": "read_iter_zero",
-    "ops_symbol": "cxx . . $ zero_fops.",
-    "impl_symbol": "cxx . . $ read_iter_zero(c5f3e27501c4297d).",
-    "file_path": "drivers/char/mem.c",
-    "line": 668,
-    "field_name": "read_iter_zero",
-    "confidence": 1.0
-  },
-  {
-    "ops_name": "full_fops",
-    "impl_name": "read_iter_zero",
-    "ops_symbol": "cxx . . $ full_fops.",
-    "impl_symbol": "cxx . . $ read_iter_zero(c5f3e27501c4297d).",
-    "file_path": "drivers/char/mem.c",
-    "line": 682,
-    "field_name": "read_iter_zero",
-    "confidence": 1.0
-  },
-  {
     "ops_name": "random_fops",
     "impl_name": "random_read_iter",
     "ops_symbol": "cxx . . $ random_fops.",
@@ -150,12 +120,42 @@
     "confidence": 1.0
   },
   {
+    "ops_name": "null_fops",
+    "impl_name": "read_iter_null",
+    "ops_symbol": "cxx . . $ null_fops.",
+    "impl_symbol": "cxx . . $ read_iter_null(c5f3e27501c4297d).",
+    "file_path": "mm/char-mem.c",
+    "line": 648,
+    "field_name": "read_iter_null",
+    "confidence": 1.0
+  },
+  {
+    "ops_name": "zero_fops",
+    "impl_name": "read_iter_zero",
+    "ops_symbol": "cxx . . $ zero_fops.",
+    "impl_symbol": "cxx . . $ read_iter_zero(c5f3e27501c4297d).",
+    "file_path": "mm/char-mem.c",
+    "line": 666,
+    "field_name": "read_iter_zero",
+    "confidence": 1.0
+  },
+  {
+    "ops_name": "full_fops",
+    "impl_name": "read_iter_zero",
+    "ops_symbol": "cxx . . $ full_fops.",
+    "impl_symbol": "cxx . . $ read_iter_zero(c5f3e27501c4297d).",
+    "file_path": "mm/char-mem.c",
+    "line": 680,
+    "field_name": "read_iter_zero",
+    "confidence": 1.0
+  },
+  {
     "ops_name": "shmem_file_operations",
     "impl_name": "shmem_file_read_iter",
     "ops_symbol": "cxx . . $ shmem_file_operations.",
     "impl_symbol": "cxx . . $ shmem_file_read_iter(c5f3e27501c4297d).",
     "file_path": "mm/shmem.c",
-    "line": 5181,
+    "line": 5392,
     "field_name": "shmem_file_read_iter",
     "confidence": 1.0
   },
