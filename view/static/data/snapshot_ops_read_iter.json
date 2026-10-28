@@ -5,7 +5,7 @@
     "ops_symbol": "cxx . . $ def_blk_fops.",
     "impl_symbol": "cxx . . $ blkdev_read_iter(c5f3e27501c4297d).",
     "file_path": "block/fops.c",
-    "line": 1005,
+    "line": 1031,
     "field_name": "blkdev_read_iter",
     "confidence": 1.0
   },
@@ -115,7 +115,7 @@
     "ops_symbol": "cxx . . $ tracing_fops.",
     "impl_symbol": "cxx . . $ seq_read_iter(c5f3e27501c4297d).",
     "file_path": "kernel/trace/trace.c",
-    "line": 3793,
+    "line": 3794,
     "field_name": "seq_read_iter",
     "confidence": 1.0
   },
@@ -155,7 +155,7 @@
     "ops_symbol": "cxx . . $ shmem_file_operations.",
     "impl_symbol": "cxx . . $ shmem_file_read_iter(c5f3e27501c4297d).",
     "file_path": "mm/shmem.c",
-    "line": 5392,
+    "line": 5396,
     "field_name": "shmem_file_read_iter",
     "confidence": 1.0
   },

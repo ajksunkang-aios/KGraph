@@ -18,7 +18,7 @@
     "title": "struct file_operations layout",
     "view": "struct",
     "file": "data/snapshot_struct_file_operations.json",
-    "count": 34
+    "count": 35
   },
   {
     "key": "body_vfs_read",
